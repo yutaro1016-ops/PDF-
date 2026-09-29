@@ -37,7 +37,7 @@ jobs:
                   data = response.read()
               actual = hashlib.sha256(data).hexdigest()
               if actual != expected:
-                  raise ValueError(f"SHA-256 mismatch: {path}")
+                  raise ValueError(f"SHA-256 mismatch: {path}; got {actual}; bytes {len(data)}; start {data[:120]!r}")
               target = Path(path)
               target.parent.mkdir(parents=True, exist_ok=True)
               target.write_bytes(data)
