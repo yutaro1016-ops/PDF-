@@ -29,6 +29,12 @@
       <div id="document-list" class="document-list" aria-label="保存したPDF"></div>
       <div class="search-block">
         <label for="search-input">本文の用語検索</label>
+        <div class="search-scope-row">
+          <label for="search-scope">検索対象</label>
+          <select id="search-scope" aria-label="本文の検索対象">
+            <option value="">すべての本</option>
+          </select>
+        </div>
         <div class="search-field"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="すべてのPDFから検索" autocomplete="off" /></div>
         <p id="search-status" class="supporting" role="status" aria-live="polite">用語を入力してください</p>
       </div>
