@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#172d43" />
+  <meta name="description" content="PDFを本棚に保存し、タイトルと本文の用語を検索できます。" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>PDF本棚</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">⌕</span><span>PDF本棚</span></div>
+    <div class="header-actions"><a class="signout" href="/signout-with-chatgpt?return_to=%2F">ログアウト</a><label class="open-button" for="file-input">PDFを追加</label></div>
+    <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden />
+  </header>
+  <main class="workspace">
+    <aside class="sidebar" aria-label="本棚と検索">
+      <div class="document-heading">
+        <p class="eyebrow">MY LIBRARY</p>
+        <h1>私の本棚</h1>
+        <p id="library-status" class="muted" role="status" aria-live="polite">本棚を読み込み中…</p>
+      </div>
+      <div class="title-search-block">
+        <label for="title-search">タイトル検索</label>
+        <input id="title-search" type="search" placeholder="資料の名前を探す" autocomplete="off" />
+      </div>
+      <div id="document-list" class="document-list" aria-label="保存したPDF"></div>
+      <div class="search-block">
+        <label for="search-input">本文の用語検索</label>
+        <div class="search-field"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="すべてのPDFから検索" autocomplete="off" /></div>
+        <p id="search-status" class="supporting" role="status" aria-live="polite">用語を入力してください</p>
+      </div>
+      <div id="search-results" class="search-results" aria-label="用語検索結果"></div>
+      <div class="privacy-note">資料はログインした利用者の本棚に保存され、別の端末からも開けます。</div>
+    </aside>
+    <section class="viewer" aria-label="PDFプレビュー">
+      <div class="toolbar">
+        <div class="page-controls" aria-label="ページ移動">
+          <button id="prev-page" class="icon-button" aria-label="前のページ" title="前のページ" disabled>‹</button>
+          <label class="page-input-label"><input id="page-input" type="number" min="1" inputmode="numeric" aria-label="ページ番号" disabled /><span id="total-pages">/ —</span></label>
+          <button id="next-page" class="icon-button" aria-label="次のページ" title="次のページ" disabled>›</button>
+        </div>
+        <div class="viewer-title"><span id="document-name">資料を選択してください</span><button id="rename-document" type="button" disabled>タイトル変更</button></div>
+        <div class="zoom-controls" aria-label="表示倍率">
+          <button id="zoom-out" class="icon-button" aria-label="縮小" title="縮小" disabled>−</button>
+          <span id="zoom-label">100%</span>
+          <button id="zoom-in" class="icon-button" aria-label="拡大" title="拡大" disabled>＋</button>
+        </div>
+      </div>
+      <div id="canvas-stage" class="canvas-stage">
+        <div id="empty-state" class="empty-state">
+          <div class="empty-illustration" aria-hidden="true"><span>PDF</span><i></i><i></i><i></i></div>
+          <h2>PDFを本棚に追加</h2>
+          <p>複数のPDFを選択できます。保存後は別の端末でも、タイトルと本文を検索できます。</p>
+          <label for="file-input" class="primary-button">PDFを選択</label>
+        </div>
+        <div id="pdf-page" class="pdf-page" hidden>
+          <canvas id="pdf-canvas" aria-label="PDFページ"></canvas>
+          <div id="text-layer" class="text-layer" aria-label="選択してコピーできるPDF本文"></div>
+        </div>
+        <div id="viewer-message" class="viewer-message" role="status" aria-live="polite" hidden></div>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
