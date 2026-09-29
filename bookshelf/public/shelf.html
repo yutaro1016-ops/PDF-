@@ -87,15 +87,15 @@
   <dialog id="shelf-design-dialog" class="design-dialog" aria-labelledby="shelf-design-title">
     <form method="dialog" id="shelf-design-form"><h2 id="shelf-design-title">本棚の見た目</h2>
       <p>デザインを選び、色を調整できます。</p><div id="shelf-design-options" class="design-options" role="group" aria-label="本棚のデザイン"></div>
-      <div class="color-fields"><label>背景色 <input name="color" type="color" /></label><label>棚板の色 <input name="boardColor" type="color" /></label><label>本棚名の文字色 <input name="textColor" type="color" /></label></div>
+      <div class="color-fields"><label>本棚全体の背景色 <input name="color" type="color" /></label><label>本を載せる棚板の色 <input name="boardColor" type="color" /></label><label>本棚名の背表紙の文字色 <input name="textColor" type="color" /></label></div>
       <div class="shelf-manage-actions"><button id="rename-shelf" type="button">名前を変更</button><button id="shelf-up" type="button">前へ</button><button id="shelf-down" type="button">後ろへ</button><button id="delete-shelf" type="button">本棚を削除</button></div>
       <div class="dialog-actions"><button value="cancel" type="button" class="dialog-cancel">キャンセル</button><button value="save" type="submit" class="dialog-save">保存する</button></div>
     </form>
   </dialog>
   <dialog id="book-design-dialog" class="design-dialog" aria-labelledby="book-design-title">
     <form method="dialog" id="book-design-form"><h2 id="book-design-title">本の見た目</h2><p id="book-design-subtitle"></p>
-      <label class="field-heading">背表紙の色</label><div id="book-color-options" class="color-options" role="group" aria-label="背表紙の色"></div>
-      <div class="color-fields"><label>自由に選ぶ <input name="bookColor" type="color" /></label><label>文字色 <input name="textColor" type="color" /></label></div>
+      <label class="field-heading">本の背表紙の色</label><p class="color-help">色の見本を押すと、背表紙の色が選ばれます。</p><div id="book-color-options" class="color-options" role="group" aria-label="背表紙の色"></div>
+      <div class="color-fields"><label>背表紙の色を自分で選ぶ <input name="bookColor" type="color" /></label><label>背表紙の文字色 <input name="textColor" type="color" /></label></div>
       <label class="field-heading">デザイン</label><div id="book-design-options" class="design-options" role="group" aria-label="本のデザイン"></div>
       <label class="dialog-field">アイコン <select name="bookIcon"><option value="pdf">PDF</option><option value="medical">医療</option><option value="star">星</option><option value="bookmark">しおり</option></select></label>
       <label class="dialog-field">表紙 <select name="coverType"><option value="none">なし</option><option value="first-page">PDFの1ページ目</option><option value="image">画像を選択</option></select></label>
