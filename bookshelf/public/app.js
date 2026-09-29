@@ -93,7 +93,8 @@ function updateList() {
   const title=document.createElement('span'); title.className='book-title'; title.textContent=book.title;
   const tags=document.createElement('span'); tags.className='book-tags'; tags.textContent=book.status!=='ready'?'保存未完了':book.pageCount && book.indexedPages<book.pageCount?'文字の取得は未完了':parseTags(book).join(' · ');
   const menu=document.createElement('button'); menu.type='button'; menu.className='book-menu'; menu.textContent='⋯'; menu.setAttribute('aria-label',book.title+'の操作'); menu.addEventListener('click',event=>{event.stopPropagation();bookMenu(book);});
-  row.append(checkbox,cover,icon,title,tags,menu);
+  const designButton=document.createElement('button');designButton.type='button';designButton.className='book-design-button';designButton.textContent='色・デザイン';designButton.setAttribute('aria-label',book.title+'の色とデザイン');designButton.addEventListener('click',event=>{event.stopPropagation();designBook(book);});
+  row.append(checkbox,cover,icon,title,tags,designButton,menu);
   row.addEventListener('click',event=>selectBook(book,index,event)); row.addEventListener('dblclick',()=>openBook(book));
   row.addEventListener('contextmenu',event=>{event.preventDefault();bookMenu(book);});
   let press, touchDrag=false, dragTimer;
@@ -447,12 +448,34 @@ async function moveBook(id,target,index) {
 async function editBook(book) {
  const title=prompt('PDFのタイトル',book.title);if(title!==null && title.trim() && title.trim()!==book.title)await updateBook(book,{title:title.trim()});
 }
-async function designBook(book) {
- const color=prompt('背表紙の色（#RRGGBB）。プリセット：青 #2f6078、緑 #527a67、赤 #a5644b、紫 #746394、黄 #aa7c37、橙 #c06e3a、茶 #77594b、白 #ffffff、黒 #222222、グレー #597782',book.bookColor||bookColor(book));
- if(color && /^#[0-9a-f]{6}$/i.test(color))await updateBook(book,{bookColor:color,textColor:parseInt(color.slice(1),16)>0xaaaaaa?'#172d43':'#ffffff'});
- const cover=prompt('表紙：PDFの1ページ目なら first-page、画像を指定する場合は後で「画像を選択」を使用',book.coverImage||'');
- if(cover==='first-page'||cover==='')await updateBook(book,{coverImage:cover||null});
+const shelfDialog=$('shelf-design-dialog'),bookDialog=$('book-design-dialog');
+const shelfDesigns=[['simple','シンプル'],['modern','モダン'],['wood','木目調'],['darkwood','ダークウッド'],['lightwood','ライトウッド'],['white','白'],['black','黒'],['gray','グレー']];
+const bookDesigns=[['simple','シンプル'],['modern','モダン'],['classic','クラシック'],['minimal','ミニマル']];
+const colorPresets=[['赤','#a55050'],['青','#2f6078'],['緑','#527a67'],['黄','#c9a343'],['オレンジ','#c06e3a'],['紫','#746394'],['茶','#77594b'],['白','#ffffff'],['黒','#222222'],['グレー','#597782']];
+let editingBook=null,editingShelf=null,coverData=null;
+function choices(container, options, selected) {
+ container.replaceChildren();for(const [value,label] of options){const button=document.createElement('button');button.type='button';button.dataset.value=value;button.className='choice'+(value===selected?' active':'');button.textContent=label;if(container.id==='book-color-options')button.style.setProperty('--swatch',value);if(container.id==='shelf-design-options')button.dataset.style=value;button.setAttribute('aria-pressed',String(value===selected));button.addEventListener('click',()=>{container.querySelectorAll('button').forEach(el=>{el.classList.remove('active');el.setAttribute('aria-pressed','false');});button.classList.add('active');button.setAttribute('aria-pressed','true');});container.append(button);}
 }
+function picked(container) {return container.querySelector('.active')?.dataset.value;}
+function automaticTextColor(color){const rgb=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>.35?'#172d43':'#ffffff';}
+function designBook(book) {
+ editingBook=book;coverData=book.coverImage||null;
+ $('book-design-subtitle').textContent=book.title;
+ const form=$('book-design-form');form.elements.bookColor.value=book.bookColor||bookColor(book);form.elements.textColor.value=book.textColor||automaticTextColor(form.elements.bookColor.value);form.elements.bookIcon.value=book.bookIcon||'pdf';form.elements.coverType.value=book.coverImage==='first-page'?'first-page':book.coverImage?'image':'none';
+ choices($('book-design-options'),bookDesigns,book.bookDesign||'simple');
+ choices($('book-color-options'),colorPresets,book.bookColor||bookColor(book));
+ $('cover-upload-label').hidden=form.elements.coverType.value!=='image';form.elements.coverFile.value='';bookDialog.showModal();
+}
+function designShelf(shelf) {
+ editingShelf=shelf;const form=$('shelf-design-form');form.elements.color.value=shelf.color||'#e9edf0';form.elements.boardColor.value=shelf.boardColor||'#a8b7bd';form.elements.textColor.value=shelf.textColor||'#172d43';choices($('shelf-design-options'),shelfDesigns,shelf.design||'simple');shelfDialog.showModal();
+}
+$('book-color-options').addEventListener('click',event=>{const color=event.target.closest('button')?.dataset.value;if(color){const form=$('book-design-form');form.elements.bookColor.value=color;form.elements.textColor.value=automaticTextColor(color);}});
+$('book-design-form').elements.bookColor.addEventListener('input',event=>{const color=event.target.value;const options=$('book-color-options');options.querySelectorAll('button').forEach(el=>{el.classList.remove('active');el.setAttribute('aria-pressed','false');});$('book-design-form').elements.textColor.value=automaticTextColor(color);});
+$('book-design-form').elements.coverType.addEventListener('change',event=>{$('cover-upload-label').hidden=event.target.value!=='image';});
+$('book-design-form').elements.coverFile.addEventListener('change',async event=>{const file=event.target.files?.[0];if(!file)return;if(file.size>120000){toast('表紙画像は120KB以下にしてください。');event.target.value='';return;}coverData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});});
+for(const dialog of [bookDialog,shelfDialog])dialog.querySelector('.dialog-cancel').addEventListener('click',()=>dialog.close());
+$('book-design-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.target;const coverType=form.elements.coverType.value;if(coverType==='image'&&!coverData?.startsWith('data:image/')){toast('表紙画像を選択してください。');return;}try{await updateBook(editingBook,{bookColor:form.elements.bookColor.value,textColor:form.elements.textColor.value,bookDesign:picked($('book-design-options')),bookIcon:form.elements.bookIcon.value,coverImage:coverType==='none'?null:coverType==='first-page'?'first-page':coverData});bookDialog.close();toast('本のデザインを保存しました。');}catch(error){toast(error.message);}});
+$('shelf-design-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.target;try{await updateShelf(editingShelf.id,{design:picked($('shelf-design-options')),color:form.elements.color.value,boardColor:form.elements.boardColor.value,textColor:form.elements.textColor.value});shelfDialog.close();toast('本棚のデザインを保存しました。');}catch(error){toast(error.message);}});
 async function bookMenu(book) {
  const choice=prompt(`「${book.title}」\n1 PDFを開く　2 詳細　3 本文検索　4 本棚移動　5 デザイン・色　6 名前変更　7 タグ　8 表紙画像を選択　9 削除　10 上へ　11 下へ　12 文字を再取得`,'1');
  try {
@@ -469,17 +492,32 @@ async function bookMenu(book) {
   if(choice==='10'||choice==='11'){const peers=listForShelf(),pos=peers.indexOf(book),other=peers[pos+(choice==='10'?-1:1)];if(other){const old=book.bookOrder??0;await updateBook(book,{bookOrder:other.bookOrder??0});await updateBook(other,{bookOrder:old});shelfUi.sort.value='manual';updateList();}}
  }catch(error){toast(error.message);}
 }
-async function editShelf() {
- const shelf=shelves.find(s=>s.id===currentShelf);if(!shelf)return;
- const action=prompt(`「${shelf.name}」の設定：1 名前変更  2 デザイン  3 色  4 順序  5 削除`,'1');
- try {
-  if(action==='1'){const name=prompt('本棚名',shelf.name);if(name?.trim())await updateShelf(shelf.id,{name:name.trim()});}
-  if(action==='2'){const design=prompt('simple / modern / wood / darkwood / lightwood / white / black / gray',shelf.design);if(design)await updateShelf(shelf.id,{design});}
-  if(action==='3'){const color=prompt('背景色 #RRGGBB',shelf.color);const boardColor=prompt('棚板の色 #RRGGBB',shelf.boardColor);const textColor=prompt('本棚名の色 #RRGGBB',shelf.textColor);await updateShelf(shelf.id,{color,boardColor,textColor});}
-  if(action==='4'){const n=Number(prompt('本棚の表示順（数字）',shelf.shelfOrder));if(Number.isSafeInteger(n)&&n>=0){await updateShelf(shelf.id,{shelfOrder:n});await normalizeShelfOrder();}}
-  if(action==='5'){const count=books.filter(b=>b.shelfId===shelf.id).length;if(confirm(`「${shelf.name}」を削除しますか？中の${count}冊のPDFは削除せず「未分類」に移します。`)){await api(`/api/shelves/${shelf.id}`,{method:'DELETE'});books.filter(b=>b.shelfId===shelf.id).forEach(b=>b.shelfId=null);shelves=shelves.filter(s=>s.id!==shelf.id);currentShelf='uncategorized';renderNavigation();updateList();toast(`${count}冊を未分類へ移しました。`);}}
- }catch(error){toast(error.message);}
+function editShelf(){const shelf=shelves.find(s=>s.id===currentShelf);if(shelf)designShelf(shelf);}
+$('rename-shelf').addEventListener('click',async()=>{const name=prompt('本棚名',editingShelf.name);if(name?.trim()){try{await updateShelf(editingShelf.id,{name:name.trim()});shelfDialog.close();}catch(error){toast(error.message);}}});
+async function shiftShelf(direction){const ordered=[...shelves].sort((a,b)=>a.shelfOrder-b.shelfOrder),index=ordered.findIndex(item=>item.id===editingShelf.id),other=ordered[index+direction];if(!other)return;ordered.splice(index,1);ordered.splice(index+direction,0,editingShelf);try{for(let i=0;i<ordered.length;i++)await updateShelf(ordered[i].id,{shelfOrder:i+1});shelfDialog.close();}catch(error){toast(error.message);}}
+$('shelf-up').addEventListener('click',()=>shiftShelf(-1));$('shelf-down').addEventListener('click',()=>shiftShelf(1));
+$('delete-shelf').addEventListener('click',async()=>{const shelf=editingShelf,count=books.filter(b=>b.shelfId===shelf.id).length;if(!confirm(`「${shelf.name}」を削除しますか？中の${count}冊のPDFは削除せず「未分類」に移します。`))return;try{await api(`/api/shelves/${shelf.id}`,{method:'DELETE'});books.filter(b=>b.shelfId===shelf.id).forEach(b=>b.shelfId=null);shelves=shelves.filter(s=>s.id!==shelf.id);currentShelf='uncategorized';shelfDialog.close();renderNavigation();updateList();toast(`${count}冊を未分類へ移しました。`);}catch(error){toast(error.message);}});
+const workspace=document.querySelector('.workspace');
+const layoutKey='pdf-page-finder-layout-v1';
+let paneLayout={left:240,middle:420,collapsed:{left:false,middle:false,right:false}};
+try{const saved=JSON.parse(localStorage.getItem(layoutKey)||'null');if(saved && Number.isFinite(saved.left) && Number.isFinite(saved.middle))paneLayout={left:Math.max(190,Math.min(600,saved.left)),middle:Math.max(260,Math.min(1000,saved.middle)),collapsed:{...paneLayout.collapsed,...saved.collapsed}};}catch{}
+function applyPaneLayout(){
+ const available=Math.max(740,workspace.clientWidth||window.innerWidth);paneLayout.left=Math.min(paneLayout.left,Math.max(190,available-536));paneLayout.middle=Math.min(paneLayout.middle,Math.max(260,available-(paneLayout.collapsed.left?46:paneLayout.left)-276));
+ workspace.style.setProperty('--left-width',paneLayout.collapsed.left?'46px':paneLayout.left+'px');
+ workspace.style.setProperty('--middle-width',paneLayout.collapsed.middle?'46px':paneLayout.middle+'px');
+ workspace.style.setProperty('--right-width',paneLayout.collapsed.right?'46px':'minmax(260px,1fr)');
+ for(const pane of ['left','middle','right']){workspace.dataset[pane]=paneLayout.collapsed[pane]?'collapsed':'open';const button=document.querySelector(`.pane-toggle[data-pane="${pane}"]`);button.setAttribute('aria-expanded',String(!paneLayout.collapsed[pane]));button.setAttribute('aria-label',`${{left:'本棚・検索',middle:'保管画面',right:'PDFビューア'}[pane]}を${paneLayout.collapsed[pane]?'開く':'閉じる'}`);button.textContent=paneLayout.collapsed[pane]?'▸':pane==='right'?'▸':'◂';}
+ localStorage.setItem(layoutKey,JSON.stringify(paneLayout));
 }
+document.querySelectorAll('.pane-toggle').forEach(button=>button.addEventListener('click',()=>{const pane=button.dataset.pane;paneLayout.collapsed[pane]=!paneLayout.collapsed[pane];applyPaneLayout();}));
+for(const separator of document.querySelectorAll('.pane-resizer')){
+ const key=separator.dataset.resize;
+ separator.addEventListener('pointerdown',event=>{if(window.innerWidth<=750)return;event.preventDefault();separator.setPointerCapture(event.pointerId);separator.classList.add('resizing');});
+ separator.addEventListener('pointermove',event=>{if(!separator.hasPointerCapture(event.pointerId))return;const rect=workspace.getBoundingClientRect();if(key==='left'){paneLayout.collapsed.left=false;paneLayout.left=Math.max(190,Math.min(600,event.clientX-rect.left));}else{paneLayout.collapsed.middle=false;paneLayout.middle=Math.max(260,Math.min(1000,event.clientX-rect.left-paneLayout.left-8));}applyPaneLayout();});
+ separator.addEventListener('pointerup',event=>{separator.classList.remove('resizing');if(separator.hasPointerCapture(event.pointerId))separator.releasePointerCapture(event.pointerId);});
+ separator.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();paneLayout.collapsed[key]=false;paneLayout[key]=Math.max(key==='left'?190:260,Math.min(key==='left'?600:1000,paneLayout[key]+(event.key==='ArrowRight'?20:-20)));applyPaneLayout();});
+}
+applyPaneLayout();window.addEventListener('resize',applyPaneLayout);
 $('add-shelf').addEventListener('click',async()=>{const name=prompt('新しい本棚の名前');if(!name?.trim())return;try{const result=await api('/api/shelves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim()})});const data=await api('/api/shelves');shelves=data.shelves;currentShelf=result.id;renderNavigation();updateList();}catch(error){toast(error.message);}});
 shelfUi.edit.addEventListener('click',editShelf);
 shelfUi.view.addEventListener('change',updateList);shelfUi.sort.addEventListener('change',updateList);
