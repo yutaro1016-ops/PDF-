@@ -4,7 +4,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/legacy/pdf.worker.min
 const $ = (id) => document.getElementById(id);
 const ui = {
   file: $('file-input'), list: $('document-list'), libraryStatus: $('library-status'), titleSearch: $('title-search'),
-  name: $('document-name'), rename: $('rename-document'), search: $('search-input'), scope: $('search-scope'), searchStatus: $('search-status'),
+  name: $('document-name'), rename: $('rename-document'), search: $('search-input'), scope: $('search-scope'),
+  scopeSummary: $('scope-summary'), scopeBooks: $('scope-books'), scopeAll: $('scope-all'), scopeNone: $('scope-none'), searchStatus: $('search-status'),
   results: $('search-results'), input: $('page-input'), total: $('total-pages'), prev: $('prev-page'), next: $('next-page'),
   zoomIn: $('zoom-in'), zoomOut: $('zoom-out'), zoomLabel: $('zoom-label'), stage: $('canvas-stage'),
   page: $('pdf-page'), canvas: $('pdf-canvas'), textLayer: $('text-layer'), empty: $('empty-state'), message: $('viewer-message'),
@@ -22,6 +23,9 @@ let openId = 0;
 let searchId = 0;
 let searchTimer = null;
 let searchHits = [];
+let selectedBookIds = null; // null means all books
+const PART_BYTES = 8 * 1024 * 1024;
+const MAX_PDF_BYTES = 1024 * 1024 * 1024;
 const pdfOptions = { isEvalSupported: false, cMapUrl: new URL('./vendor/cmaps/', import.meta.url).href,
   cMapPacked: true, standardFontDataUrl: new URL('./vendor/standard_fonts/', import.meta.url).href,
   wasmUrl: new URL('./vendor/wasm/', import.meta.url).href };
@@ -29,11 +33,21 @@ const pdfOptions = { isEvalSupported: false, cMapUrl: new URL('./vendor/cmaps/',
 function normalize(value) { return value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ''); }
 function setMessage(message) { ui.message.textContent = message; ui.message.hidden = !message; }
 function updateScopeOptions() {
-  const selected = ui.scope.value;
-  ui.scope.replaceChildren(new Option('すべての本', ''));
-  for (const book of books) ui.scope.add(new Option(book.title, book.id));
-  ui.scope.value = books.some((book) => book.id === selected) ? selected : '';
-  ui.search.placeholder = ui.scope.value ? 'この本から検索' : 'すべてのPDFから検索';
+  if (selectedBookIds) {
+    selectedBookIds = new Set([...selectedBookIds].filter((id) => books.some((book) => book.id === id)));
+    if (selectedBookIds.size === books.length) selectedBookIds = null;
+  }
+  ui.scopeBooks.replaceChildren();
+  for (const book of books) {
+    const label = document.createElement('label'); label.className = 'scope-book';
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = book.id;
+    checkbox.checked = selectedBookIds === null || selectedBookIds.has(book.id);
+    const title = document.createElement('span'); title.textContent = book.title;
+    label.append(checkbox, title); ui.scopeBooks.append(label);
+  }
+  const count = selectedBookIds?.size ?? books.length;
+  ui.scopeSummary.textContent = count === books.length ? 'すべての本' : count ? `${count}冊を選択中` : '対象を選択してください';
+  ui.search.placeholder = count === books.length ? 'すべてのPDFから検索' : '選択した本から検索';
 }
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -51,12 +65,14 @@ function updateList() {
     const select = document.createElement('button'); select.type = 'button';
     select.className = 'document-select' + (activeBook?.id === book.id ? ' active' : '');
     const title = document.createElement('span'); title.className = 'document-item-name'; title.textContent = book.title;
-    const detail = document.createElement('span'); detail.className = 'document-item-detail';
-    detail.textContent = book.status !== 'ready' ? '保存未完了・削除できます'
-      : `${book.pageCount || '—'}ページ${book.indexedPages < book.pageCount ? '・文字の取得は未完了' : ''}`;
-    select.append(title, detail); select.addEventListener('click', () => openBook(book));
+    select.append(title); select.addEventListener('click', () => openBook(book));
+    if (book.status !== 'ready' || !book.pageCount || book.indexedPages < book.pageCount) {
+      const detail = document.createElement('span'); detail.className = 'document-item-detail';
+      detail.textContent = book.status !== 'ready' ? '保存未完了・削除できます' : '文字の取得は未完了';
+      select.append(detail);
+    }
     row.append(select);
-    if (book.status === 'ready' && book.indexedPages < book.pageCount) {
+    if (book.status === 'ready' && (!book.pageCount || book.indexedPages < book.pageCount)) {
       const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'document-retry';
       retry.textContent = '文字を再取得'; retry.setAttribute('aria-label', `${book.title}の文字を再取得`);
       retry.addEventListener('click', () => reindexBook(book)); row.append(retry);
@@ -99,11 +115,8 @@ async function openBook(book, targetPage = 1) {
   ui.page.hidden = true; ui.empty.hidden = true; ui.name.textContent = book.title;
   setMessage('PDFを開いています…'); setControls(); updateList();
   try {
-    const response = await fetch(`/api/library/${encodeURIComponent(book.id)}/file`);
-    if (!response.ok) throw new Error('PDFを開けませんでした。');
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (id !== openId) return;
-    const task = pdfjsLib.getDocument({ ...pdfOptions, data: bytes }); activeTask = task;
+    const task = pdfjsLib.getDocument({ ...pdfOptions, url: `/api/library/${encodeURIComponent(book.id)}/file`,
+      disableStream: true, disableAutoFetch: true, rangeChunkSize: 1024 * 1024 }); activeTask = task;
     const loaded = await task.promise;
     if (id !== openId) return;
     pdf = loaded; ui.empty.hidden = true; setMessage('');
@@ -170,6 +183,9 @@ function makeIndex(items) {
 }
 async function indexBook(book, loaded) {
   if (!loaded || !books.includes(book)) return;
+  const pageInfo = await api(`/api/library/${encodeURIComponent(book.id)}/pages`, { method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pageCount: loaded.numPages }) });
+  book.pageCount = pageInfo.pageCount; updateList();
   let failures = 0;
   for (let p = 1; p <= loaded.numPages; p++) {
     if (!books.includes(book)) return;
@@ -177,6 +193,7 @@ async function indexBook(book, loaded) {
       const page = await loaded.getPage(p);
       const content = await readTextContent(page);
       const index = makeIndex(content.items);
+      page.cleanup();
       if (index.text.length > 200000 || index.normalized.length > 200000) throw new Error('Text too long');
       const result = await api(`/api/library/${encodeURIComponent(book.id)}/pages`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -197,11 +214,35 @@ async function indexBook(book, loaded) {
 async function reindexBook(book) {
   try {
     ui.libraryStatus.textContent = `${book.title}の文字を再取得中…`;
-    const response = await fetch(`/api/library/${encodeURIComponent(book.id)}/file`);
-    if (!response.ok) throw new Error('PDFを取得できませんでした。');
-    const task = pdfjsLib.getDocument({ ...pdfOptions, data: new Uint8Array(await response.arrayBuffer()) });
+    const task = pdfjsLib.getDocument({ ...pdfOptions, url: `/api/library/${encodeURIComponent(book.id)}/file`,
+      disableStream: true, disableAutoFetch: true, rangeChunkSize: 1024 * 1024 });
     try { await indexBook(book, await task.promise); } finally { await task.destroy(); }
   } catch (error) { ui.libraryStatus.textContent = error.message; }
+}
+async function uploadFile(id, file) {
+  const path = `/api/library/${encodeURIComponent(id)}`;
+  if (file.size <= PART_BYTES) {
+    await api(`${path}/file`, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file });
+    return;
+  }
+  await api(`${path}/multipart`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  const total = Math.ceil(file.size / PART_BYTES);
+  const parts = [];
+  for (let number = 1; number <= total; number++) {
+    const chunk = file.slice((number - 1) * PART_BYTES, Math.min(number * PART_BYTES, file.size));
+    let uploaded;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        uploaded = await api(`${path}/multipart/${number}`, { method: 'PUT',
+          headers: { 'Content-Type': 'application/octet-stream' }, body: chunk });
+        break;
+      } catch (error) { if (attempt === 2) throw error; }
+    }
+    parts.push(uploaded);
+    ui.libraryStatus.textContent = `${file.name}を保存中… ${Math.round(number / total * 100)}%`;
+  }
+  await api(`${path}/multipart`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parts }) });
 }
 async function addFiles(files) {
   const accepted = Array.from(files).filter((file) => /\.pdf$/i.test(file.name) || file.type === 'application/pdf');
@@ -210,22 +251,26 @@ async function addFiles(files) {
     let newId = null; let saved = false;
     try {
       ui.libraryStatus.textContent = `${file.name}を保存中…`;
-      if (file.size > 50 * 1024 * 1024) throw new Error('50MB以下のPDFを選択してください。');
-      const task = pdfjsLib.getDocument({ ...pdfOptions, data: new Uint8Array(await file.arrayBuffer()) });
+      if (file.size > MAX_PDF_BYTES) throw new Error('1GB以下のPDFを選択してください。');
+      const title = file.name.replace(/\.pdf$/i, '').trim() || file.name;
+      const created = await api('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, fileName: file.name, size: file.size }) });
+      newId = created.id;
+      await uploadFile(newId, file);
+      saved = true;
+      const book = { id: newId, title, fileName: file.name, fileSize: file.size, pageCount: 0,
+        indexedPages: 0, status: 'ready', createdAt: new Date().toISOString() };
+      books.unshift(book); updateList(); updateScopeOptions();
+      if (!activeBook) openBook(book);
       try {
-        const loaded = await task.promise;
-        const title = file.name.replace(/\.pdf$/i, '').trim() || file.name;
-        const created = await api('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, fileName: file.name, size: file.size }) });
-        newId = created.id;
-        await api(`/api/library/${encodeURIComponent(newId)}/file`, { method: 'PUT', headers: { 'Content-Type': 'application/pdf', 'X-Page-Count': String(loaded.numPages) }, body: file });
-        saved = true;
-        const book = { id: newId, title, fileName: file.name, fileSize: file.size, pageCount: loaded.numPages,
-          indexedPages: 0, status: 'ready', createdAt: new Date().toISOString() };
-        books.unshift(book); updateList(); updateScopeOptions();
-        if (!activeBook) openBook(book);
-        await indexBook(book, loaded);
-      } finally { await task.destroy(); }
+        ui.libraryStatus.textContent = `${file.name}を保存しました。文字を取得中…`;
+        const task = pdfjsLib.getDocument({ ...pdfOptions, url: `/api/library/${encodeURIComponent(newId)}/file`,
+          disableStream: true, disableAutoFetch: true, rangeChunkSize: 1024 * 1024 });
+        try { await indexBook(book, await task.promise); } finally { await task.destroy(); }
+      } catch (error) {
+        ui.libraryStatus.textContent = `${file.name}は保存しました。文字の取得は「文字を再取得」からやり直せます。`;
+        console.warn('Index failed:', error);
+      }
     } catch (error) {
       if (newId && !saved) {
         try { await api(`/api/library/${encodeURIComponent(newId)}`, { method: 'DELETE' }); } catch (_) {}
@@ -272,10 +317,11 @@ async function searchTerm() {
   const id = ++searchId;
   const query = normalize(ui.search.value.trim()).slice(0, 100);
   if (!query) { ui.results.replaceChildren(); ui.searchStatus.textContent = '用語を入力してください'; return; }
+  if (selectedBookIds?.size === 0) { ui.results.replaceChildren(); ui.searchStatus.textContent = '検索対象の本を選択してください'; return; }
   ui.searchStatus.textContent = '用語を検索中…';
   try {
     const params = new URLSearchParams({ q: query });
-    if (ui.scope.value) params.set('book', ui.scope.value);
+    if (selectedBookIds) for (const bookId of selectedBookIds) params.append('book', bookId);
     const response = await api(`/api/search?${params}`);
     if (id !== searchId) return;
     searchHits = response.results; ui.results.replaceChildren();
@@ -318,10 +364,15 @@ ui.file.addEventListener('change', (event) => { addFiles(event.target.files); ev
 ui.titleSearch.addEventListener('input', updateList);
 ui.rename.addEventListener('click', renameBook);
 ui.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(searchTerm, 250); });
-ui.scope.addEventListener('change', () => {
-  ui.search.placeholder = ui.scope.value ? 'この本から検索' : 'すべてのPDFから検索';
-  searchTerm();
+ui.scopeBooks.addEventListener('change', (event) => {
+  if (!event.target.matches('input[type="checkbox"]')) return;
+  selectedBookIds ??= new Set(books.map((book) => book.id));
+  if (event.target.checked) selectedBookIds.add(event.target.value);
+  else selectedBookIds.delete(event.target.value);
+  updateScopeOptions(); searchTerm();
 });
+ui.scopeAll.addEventListener('click', () => { selectedBookIds = null; updateScopeOptions(); searchTerm(); });
+ui.scopeNone.addEventListener('click', () => { selectedBookIds = new Set(); updateScopeOptions(); searchTerm(); });
 ui.prev.addEventListener('click', () => showPage(currentPage - 1));
 ui.next.addEventListener('click', () => showPage(currentPage + 1));
 ui.input.addEventListener('change', () => showPage(ui.input.value));

@@ -9,6 +9,7 @@ export const books = sqliteTable("books", {
   pageCount: integer("page_count").notNull().default(0),
   indexedPages: integer("indexed_pages").notNull().default(0),
   status: text("status").notNull().default("uploading"),
+  uploadId: text("upload_id"),
   createdAt: text("created_at").notNull(),
 }, (table) => [index("idx_books_user_created").on(table.userId, table.createdAt)]);
 

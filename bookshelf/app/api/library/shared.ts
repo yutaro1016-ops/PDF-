@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../chatgpt-auth";
 
-export const MAX_PDF_BYTES = 50 * 1024 * 1024;
+export const MAX_PDF_BYTES = 1024 * 1024 * 1024;
+export const PART_BYTES = 8 * 1024 * 1024;
 
 export function database() {
   if (!env.DB) throw new Error("Database unavailable");

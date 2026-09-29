@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const title = String(payload.title || "").trim().slice(0, 240);
     const size = Number(payload.size);
     if (!/\.pdf$/i.test(fileName) || !title || !Number.isInteger(size) || size < 1 || size > MAX_PDF_BYTES)
-      return failure("50MB以下のPDFを選択してください。");
+      return failure("1GB以下のPDFを選択してください。");
     const id = crypto.randomUUID();
     await database().prepare(
       "INSERT INTO books (id, user_id, title, file_name, file_size, created_at) VALUES (?, ?, ?, ?, ?, ?)"

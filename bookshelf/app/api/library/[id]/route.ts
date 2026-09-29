@@ -23,7 +23,9 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
   try {
-    if (!await ownedBook(id, userId)) return failure("資料が見つかりません。", 404);
+    const book = await ownedBook(id, userId);
+    if (!book) return failure("資料が見つかりません。", 404);
+    if (book.upload_id) await bucket().resumeMultipartUpload(fileKey(userId, id), String(book.upload_id)).abort();
     await bucket().delete(fileKey(userId, id));
     await database().batch([
       database().prepare("DELETE FROM pages WHERE book_id = ?").bind(id),

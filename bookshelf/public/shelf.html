@@ -30,10 +30,14 @@
       <div class="search-block">
         <label for="search-input">本文の用語検索</label>
         <div class="search-scope-row">
-          <label for="search-scope">検索対象</label>
-          <select id="search-scope" aria-label="本文の検索対象">
-            <option value="">すべての本</option>
-          </select>
+          <span class="scope-label">検索対象</span>
+          <details id="search-scope" class="scope-picker">
+            <summary id="scope-summary">すべての本</summary>
+            <div class="scope-options">
+              <div class="scope-actions"><button id="scope-all" type="button">すべて選択</button><button id="scope-none" type="button">選択解除</button></div>
+              <div id="scope-books" class="scope-books"></div>
+            </div>
+          </details>
         </div>
         <div class="search-field"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="すべてのPDFから検索" autocomplete="off" /></div>
         <p id="search-status" class="supporting" role="status" aria-live="polite">用語を入力してください</p>
