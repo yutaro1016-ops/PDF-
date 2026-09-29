@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#172d43" />
+    <meta name="description" content="手元のPDFを開き、本文を検索して該当ページへ移動できるPDFビューアー。" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23172d43'/%3E%3Cpath d='M19 11h18l9 9v33H19z' fill='none' stroke='%23fff' stroke-width='3' stroke-linejoin='round'/%3E%3Cpath d='M37 11v10h9M25 32h15M25 39h15M25 46h9' fill='none' stroke='%237bd9c7' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <title>PDFページ検索</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon" aria-hidden="true">⌕</span><span>PDFページ検索</span></div>
+      <label class="open-button" for="file-input">PDFを開く</label>
+      <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar" aria-label="検索とページ移動">
+        <div class="document-heading">
+          <p class="eyebrow">DOCUMENT</p>
+          <h1 id="document-name">PDFを選択してください</h1>
+          <p id="page-count" class="muted">ページ数は読み込み後に自動表示されます</p>
+        </div>
+
+        <div class="search-block">
+          <label for="search-input">本文を検索</label>
+          <div class="search-field"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="キーワードを入力" autocomplete="off" disabled /></div>
+          <p id="search-status" class="supporting" role="status" aria-live="polite">PDFを開くと検索できます</p>
+        </div>
+        <div id="search-results" class="search-results" aria-label="検索結果"></div>
+
+        <div class="privacy-note">PDFの内容は、この端末のブラウザー内で処理します。ファイルをサーバーに送信しません。</div>
+      </aside>
+
+      <section class="viewer" aria-label="PDFプレビュー">
+        <div class="toolbar">
+          <div class="page-controls" aria-label="ページ移動">
+            <button id="prev-page" class="icon-button" aria-label="前のページ" title="前のページ" disabled>‹</button>
+            <label class="page-input-label"><input id="page-input" type="number" min="1" inputmode="numeric" aria-label="ページ番号" disabled /><span id="total-pages">/ —</span></label>
+            <button id="next-page" class="icon-button" aria-label="次のページ" title="次のページ" disabled>›</button>
+          </div>
+          <div class="zoom-controls" aria-label="表示倍率">
+            <button id="zoom-out" class="icon-button" aria-label="縮小" title="縮小" disabled>−</button>
+            <span id="zoom-label">100%</span>
+            <button id="zoom-in" class="icon-button" aria-label="拡大" title="拡大" disabled>＋</button>
+          </div>
+        </div>
+        <div id="canvas-stage" class="canvas-stage">
+          <div id="empty-state" class="empty-state">
+            <div class="empty-illustration" aria-hidden="true"><span>PDF</span><i></i><i></i><i></i></div>
+            <h2>PDFを開いて、ページを探す</h2>
+            <p>ファイルを選ぶか、ここにドラッグしてください。<br />読み取ったページだけを検索・表示します。</p>
+            <label for="file-input" class="primary-button">PDFを選択</label>
+          </div>
+          <canvas id="pdf-canvas" hidden aria-label="PDFページ"></canvas>
+          <div id="viewer-message" class="viewer-message" role="status" aria-live="polite" hidden></div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
