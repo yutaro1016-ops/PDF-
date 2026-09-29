@@ -17,4 +17,4 @@ PDFは端末内で処理し、サーバーには送信しません。文字情�
 
 `index.html` を含むディレクトリを静的ホスティングに配置するだけで使えます。GitHub Pagesでは、このディレクトリのファイルをリポジトリのルートに置き、Settings → Pages で `Deploy from a branch` と `main / (root)` を選択します。利用者は公開URLから自分のPDFを開けます。
 
-PDF.js 5.6.205 のブラウザー向けビルドを `vendor/` に同梱しています。ライセンスは `vendor/pdfjs-LICENSE.txt` を参照してください。
+PDF.js 5.6.205 のブラウザー向けビルドと互換性を高めた legacy ビルドを `vendor/` に同梱しています。アプリは legacy ビルドを使用します。ライセンスは `vendor/pdfjs-LICENSE.txt` を参照してください。
