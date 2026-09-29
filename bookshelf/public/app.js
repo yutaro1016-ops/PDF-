@@ -68,6 +68,7 @@ function listForShelf() {
  if (mode === 'created') subset.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
  if (mode === 'updated') subset.sort((a,b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt));
  if (mode === 'recent') subset.sort((a,b) => (b.lastOpenedAt || '').localeCompare(a.lastOpenedAt || ''));
+ if(currentShelf==='all') { const order=new Map(shelves.map((s,i)=>[s.id,i+1]));subset.sort((a,b)=>(order.get(a.shelfId)||0)-(order.get(b.shelfId)||0)); }
  return subset;
 }
 function updateList() {
@@ -78,7 +79,9 @@ function updateList() {
  const activeShelf=shelves.find(s=>s.id===currentShelf); const panel=document.querySelector('.shelf-panel'); panel.dataset.design=activeShelf?.design||'simple';panel.style.setProperty('--shelf-bg',activeShelf?.color||'#f5f8f9');panel.style.setProperty('--shelf-board',activeShelf?.boardColor||'#a7b8c1');shelfUi.name.style.color=activeShelf?.textColor||'#172d43';
  ui.list.dataset.mode = shelfUi.view.value;
  shelfUi.more.hidden = visible.length <= visibleLimit;
+ let previousShelf;
  for (const [index,book] of visible.slice(0,visibleLimit).entries()) {
+  if(currentShelf==='all' && book.shelfId!==previousShelf) { const heading=document.createElement('h3');heading.className='shelf-group';heading.textContent=shelves.find(s=>s.id===book.shelfId)?.name||'未分類';ui.list.append(heading);previousShelf=book.shelfId; }
   const row = document.createElement('div'); row.className = 'book-card' + (selected.has(book.id) ? ' selected' : ''); row.draggable = true; row.dataset.id = book.id; row.title = book.title;
   row.style.setProperty('--book-color',bookColor(book)); row.style.setProperty('--book-text',book.textColor || '#fff');
   const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(book.id); checkbox.setAttribute('aria-label',book.title+'を選択');
@@ -431,9 +434,13 @@ async function moveBook(id,target,index) {
  const book=books.find(b=>b.id===id);if(!book)return;
  const previous={shelfId:book.shelfId??null,bookOrder:book.bookOrder??0};
  try {
-  const items=books.filter(b=>b.shelfId===target && b.id!==id).sort((a,b)=>(a.bookOrder??0)-(b.bookOrder??0));
-  let order=Date.now();if(Number.isInteger(index)) { const before=items[index-1]?.bookOrder??0,after=items[index]?.bookOrder??before+2000;order=(before+after)/2; }
-  await updateBook(book,{shelfId:target,bookOrder:Math.max(0,Math.round(order))});renderNavigation();
+  if(Number.isInteger(index) && target === (book.shelfId??null)) {
+   const items=books.filter(b=>(b.shelfId??null)===target && b.id!==id).sort((a,b)=>(a.bookOrder??0)-(b.bookOrder??0)||a.createdAt.localeCompare(b.createdAt));
+   items.splice(Math.max(0,Math.min(index,items.length)),0,book);
+   await api('/api/library/order',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({shelfId:target,ids:items.map(b=>b.id)})});
+   items.forEach((item,i)=>item.bookOrder=i+1);shelfUi.sort.value='manual';updateList();toast('順序を変更しました。');return;
+  }
+  await updateBook(book,{shelfId:target,bookOrder:Date.now()});renderNavigation();
   toast('本を移動しました。',()=>updateBook(book,previous).then(renderNavigation));
  }catch(error){toast(error.message);}
 }
