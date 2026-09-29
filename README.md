@@ -1,6 +1,6 @@
 # PDFページ検索
 
-[公開アプリを使う](https://pdf-page-finder-yutaro.yutaro1016.chatgpt.site/)
+[公開アプリを使う](https://pdf-page-finder.yutaro1016.chatgpt.site/)
 
 PDFをブラウザーで開き、実際のページ数を自動取得して、本文検索の結果から該当ページへ移動する静的Webアプリです。
 
