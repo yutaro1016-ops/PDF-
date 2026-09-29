@@ -7,7 +7,8 @@ const ui = {
   file: $('file-input'), name: $('document-name'), count: $('page-count'), search: $('search-input'),
   searchStatus: $('search-status'), results: $('search-results'), input: $('page-input'), total: $('total-pages'),
   prev: $('prev-page'), next: $('next-page'), zoomIn: $('zoom-in'), zoomOut: $('zoom-out'), zoomLabel: $('zoom-label'),
-  stage: $('canvas-stage'), canvas: $('pdf-canvas'), empty: $('empty-state'), message: $('viewer-message'),
+  stage: $('canvas-stage'), page: $('pdf-page'), canvas: $('pdf-canvas'), textLayer: $('text-layer'),
+  empty: $('empty-state'), message: $('viewer-message'),
 };
 
 let documentTask = null;
@@ -16,6 +17,8 @@ let pageTexts = [];
 let currentPage = 1;
 let zoom = 1;
 let renderTask = null;
+let textLayerTask = null;
+let pageRenderId = 0;
 let loadId = 0;
 let searchTimer = null;
 
@@ -66,8 +69,10 @@ async function openFile(file) {
     return;
   }
   const id = ++loadId;
+  pageRenderId++;
   clearTimeout(searchTimer);
   if (renderTask) { renderTask.cancel(); renderTask = null; }
+  if (textLayerTask) { textLayerTask.cancel(); textLayerTask = null; }
   if (documentTask) { documentTask.destroy(); documentTask = null; }
   pdf = null;
   pageTexts = [];
@@ -76,7 +81,8 @@ async function openFile(file) {
   ui.name.textContent = file.name;
   ui.count.textContent = 'ページ数を確認中…';
   ui.empty.hidden = true;
-  ui.canvas.hidden = true;
+  ui.page.hidden = true;
+  ui.textLayer.replaceChildren();
   ui.search.value = '';
   ui.search.disabled = true;
   ui.results.replaceChildren();
@@ -138,15 +144,18 @@ async function showPage(number) {
     return;
   }
   currentPage = next;
+  const renderId = ++pageRenderId;
   setControls();
   ui.results.querySelectorAll('.result').forEach((el) => el.classList.toggle('active', Number(el.dataset.page) === next));
+  if (textLayerTask) { textLayerTask.cancel(); textLayerTask = null; }
+  ui.textLayer.replaceChildren();
   if (renderTask) {
     renderTask.cancel();
     try { await renderTask.promise; } catch (_) { /* cancelled render */ }
   }
   const activePdf = pdf;
   const page = await activePdf.getPage(next);
-  if (activePdf !== pdf || next !== currentPage) return;
+  if (activePdf !== pdf || renderId !== pageRenderId) return;
   const viewport = page.getViewport({ scale: zoom });
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
   const context = ui.canvas.getContext('2d', { alpha: false });
@@ -154,14 +163,29 @@ async function showPage(number) {
   ui.canvas.height = Math.floor(viewport.height * pixelRatio);
   ui.canvas.style.width = `${viewport.width}px`;
   ui.canvas.style.height = `${viewport.height}px`;
-  ui.canvas.hidden = false;
+  ui.page.style.width = `${viewport.width}px`;
+  ui.page.style.height = `${viewport.height}px`;
+  ui.page.style.setProperty('--total-scale-factor', zoom);
+  ui.page.hidden = false;
   ui.stage.scrollTop = 0;
   ui.stage.scrollLeft = 0;
   const task = page.render({ canvasContext: context, viewport, transform: [pixelRatio, 0, 0, pixelRatio, 0, 0] });
   renderTask = task;
-  try { await task.promise; }
-  catch (error) { if (error?.name !== 'RenderingCancelledException') console.error('PDF render failed:', error); }
-  finally { if (renderTask === task) renderTask = null; }
+  try {
+    await task.promise;
+    if (activePdf !== pdf || renderId !== pageRenderId) return;
+    const content = await page.getTextContent();
+    if (activePdf !== pdf || renderId !== pageRenderId) return;
+    const layer = new pdfjsLib.TextLayer({ textContentSource: content, container: ui.textLayer, viewport });
+    textLayerTask = layer;
+    await layer.render();
+  } catch (error) {
+    if (error?.name !== 'RenderingCancelledException' && error?.name !== 'AbortException')
+      console.error('PDF render failed:', error);
+  } finally {
+    if (renderTask === task) renderTask = null;
+    if (renderId === pageRenderId) textLayerTask = null;
+  }
 }
 
 function addSnippet(container, page, start, length) {
