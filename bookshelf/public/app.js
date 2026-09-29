@@ -451,7 +451,7 @@ async function editBook(book) {
 const shelfDialog=$('shelf-design-dialog'),bookDialog=$('book-design-dialog');
 const shelfDesigns=[['simple','シンプル'],['modern','モダン'],['wood','木目調'],['darkwood','ダークウッド'],['lightwood','ライトウッド'],['white','白'],['black','黒'],['gray','グレー']];
 const bookDesigns=[['simple','シンプル'],['modern','モダン'],['classic','クラシック'],['minimal','ミニマル']];
-const colorPresets=[['赤','#a55050'],['青','#2f6078'],['緑','#527a67'],['黄','#c9a343'],['オレンジ','#c06e3a'],['紫','#746394'],['茶','#77594b'],['白','#ffffff'],['黒','#222222'],['グレー','#597782']];
+const colorPresets=[['#a55050','赤'],['#2f6078','青'],['#527a67','緑'],['#c9a343','黄'],['#c06e3a','オレンジ'],['#746394','紫'],['#77594b','茶'],['#ffffff','白'],['#222222','黒'],['#597782','グレー']];
 let editingBook=null,editingShelf=null,coverData=null;
 function choices(container, options, selected) {
  container.replaceChildren();for(const [value,label] of options){const button=document.createElement('button');button.type='button';button.dataset.value=value;button.className='choice'+(value===selected?' active':'');button.textContent=label;if(container.id==='book-color-options')button.style.setProperty('--swatch',value);if(container.id==='shelf-design-options')button.dataset.style=value;button.setAttribute('aria-pressed',String(value===selected));button.addEventListener('click',()=>{container.querySelectorAll('button').forEach(el=>{el.classList.remove('active');el.setAttribute('aria-pressed','false');});button.classList.add('active');button.setAttribute('aria-pressed','true');});container.append(button);}
