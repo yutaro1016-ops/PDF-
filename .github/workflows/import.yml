@@ -27,7 +27,7 @@ jobs:
           records = []
           for line in Path("import-manifest.txt").read_text().splitlines():
               expected, path = line.split("  ", 1)
-              records.append((expected, path))
+              if path != "index.html":\n                  records.append((expected, path))
 
           def fetch(record):
               expected, path = record
@@ -51,6 +51,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html app.js styles.css vendor
+          git add app.js styles.css vendor
           git commit -m "Add complete PDF page finder application"
           git push
