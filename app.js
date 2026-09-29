@@ -4,23 +4,22 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/legacy/pdf.worker.min
 
 const $ = (id) => document.getElementById(id);
 const ui = {
-  file: $('file-input'), name: $('document-name'), count: $('page-count'), search: $('search-input'),
+  file: $('file-input'), name: $('document-name'), count: $('page-count'), listBlock: $('document-list-block'),
+  list: $('document-list'), clear: $('clear-documents'), search: $('search-input'),
   searchStatus: $('search-status'), results: $('search-results'), input: $('page-input'), total: $('total-pages'),
   prev: $('prev-page'), next: $('next-page'), zoomIn: $('zoom-in'), zoomOut: $('zoom-out'), zoomLabel: $('zoom-label'),
   stage: $('canvas-stage'), page: $('pdf-page'), canvas: $('pdf-canvas'), textLayer: $('text-layer'),
   empty: $('empty-state'), message: $('viewer-message'),
 };
 
-let documentTask = null;
-let pdf = null;
-let pageTexts = [];
-let unreadablePages = 0;
+let documents = [];
+let activeDoc = null;
 let currentPage = 1;
 let zoom = 1;
 let renderTask = null;
 let textLayerTask = null;
 let pageRenderId = 0;
-let loadId = 0;
+let collectionId = 0;
 let searchTimer = null;
 
 function setMessage(message) {
@@ -34,7 +33,6 @@ function normalize(value) {
 
 function makeIndex(items) {
   const text = items.map((item) => item.str + (item.hasEOL ? ' ' : '')).join('');
-  // The index ignores spaces so text split into PDF drawing commands stays searchable.
   const characters = [];
   let normalized = '';
   for (let i = 0; i < text.length;) {
@@ -50,8 +48,7 @@ function makeIndex(items) {
 }
 
 async function readTextContent(page) {
-  // Safari can render a page while PDF.js getTextContent() fails when it
-  // iterates the ReadableStream. Reading chunks directly avoids that path.
+  // Safari can render a page while getTextContent() fails to iterate its stream.
   const reader = page.streamTextContent().getReader();
   const content = { items: [], styles: Object.create(null), lang: null };
   try {
@@ -68,132 +65,240 @@ async function readTextContent(page) {
   return content;
 }
 
-function setControls() {
-  const ready = Boolean(pdf);
-  const total = pdf?.numPages || 0;
-  ui.input.disabled = !ready;
-  ui.input.max = total || '';
-  ui.input.value = ready ? currentPage : '';
-  ui.total.textContent = ready ? `/ ${total}` : '/ —';
-  ui.prev.disabled = !ready || currentPage <= 1;
-  ui.next.disabled = !ready || currentPage >= total;
-  ui.zoomIn.disabled = !ready || zoom >= 2.5;
-  ui.zoomOut.disabled = !ready || zoom <= 0.5;
-  ui.zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+function isCurrent(doc, generation) {
+  return generation === collectionId && documents.includes(doc);
 }
 
-async function openFile(file) {
-  if (!file) return;
-  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
-    setMessage('PDFファイルを選択してください。');
-    return;
-  }
-  const id = ++loadId;
-  pageRenderId++;
-  clearTimeout(searchTimer);
-  if (renderTask) { renderTask.cancel(); renderTask = null; }
-  if (textLayerTask) { textLayerTask.cancel(); textLayerTask = null; }
-  if (documentTask) { documentTask.destroy(); documentTask = null; }
-  pdf = null;
-  pageTexts = [];
-  unreadablePages = 0;
-  currentPage = 1;
-  zoom = 1;
-  ui.name.textContent = file.name;
-  ui.count.textContent = 'ページ数を確認中…';
-  ui.empty.hidden = true;
-  ui.page.hidden = true;
-  ui.textLayer.replaceChildren();
-  ui.search.value = '';
-  ui.search.disabled = true;
-  ui.results.replaceChildren();
-  ui.searchStatus.textContent = '読み込み中…';
-  setMessage('PDFを読み込んでいます…');
-  setControls();
-
-  try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    if (id !== loadId) return;
-    documentTask = pdfjsLib.getDocument({
-      data: bytes,
-      isEvalSupported: false,
-      cMapUrl: new URL('./vendor/cmaps/', import.meta.url).href,
-      cMapPacked: true,
-      standardFontDataUrl: new URL('./vendor/standard_fonts/', import.meta.url).href,
-      wasmUrl: new URL('./vendor/wasm/', import.meta.url).href,
-    });
-    const loaded = await documentTask.promise;
-    if (id !== loadId) return;
-    pdf = loaded;
-    ui.count.textContent = `${pdf.numPages}ページ`;
-    setControls();
-    setMessage('');
-    await showPage(1);
-
-    ui.searchStatus.textContent = `検索用テキストを読み込み中… 0 / ${pdf.numPages}ページ`;
-    for (let p = 1; p <= pdf.numPages; p++) {
-      try {
-        const page = await pdf.getPage(p);
-        const content = await readTextContent(page);
-        if (id !== loadId) return;
-        pageTexts[p - 1] = makeIndex(content.items);
-      } catch (error) {
-        if (id !== loadId) return;
-        unreadablePages++;
-        pageTexts[p - 1] = null;
-        console.warn(`Text extraction failed on page ${p}:`, error);
-      }
-      if (p === pdf.numPages || p % 5 === 0) {
-        ui.searchStatus.textContent = `検索用テキストを読み込み中… ${p} / ${pdf.numPages}ページ`;
-      }
-      // Let page navigation and mobile browsers respond during longer PDFs.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    if (id !== loadId) return;
-    const indexedPages = pageTexts.filter((page) => page && page.normalized).length;
-    ui.search.disabled = indexedPages === 0;
-    ui.searchStatus.textContent = indexedPages === 0
-      ? '本文の文字を取得できませんでした。ページ表示は利用できます。'
-      : `検索語を入力してください${coverageNote()}`;
-    if (indexedPages && window.matchMedia('(pointer: fine)').matches) ui.search.focus();
-  } catch (error) {
-    if (id !== loadId) return;
-    const message = error?.name === 'PasswordException'
-      ? 'パスワード保護されたPDFは、この版では開けません。'
-      : pdf
-        ? 'ページ表示で問題が発生しました。別のブラウザーでもお試しください。'
-        : 'PDFを開けませんでした。ファイル形式と端末のブラウザーを確認してください。';
-    setMessage(message);
-    ui.searchStatus.textContent = '検索できません';
-    if (!pdf) ui.count.textContent = 'ページ数を取得できませんでした';
-    console.error('PDF load failed:', error);
-  }
+function indexedCount(doc) {
+  return doc.pageTexts.filter((page) => page?.normalized).length;
 }
 
 function coverageNote() {
-  return unreadablePages ? `（${unreadablePages}ページの文字は読み取れませんでした）` : '';
+  const unreadable = documents.reduce((sum, doc) => sum + doc.unreadablePages, 0);
+  return unreadable ? `（${unreadable}ページの文字は読み取れませんでした）` : '';
 }
 
-async function showPage(number) {
-  if (!pdf) return;
+function updateSearchStatus() {
+  const processing = documents.find((doc) => doc.status === 'loading' || doc.status === 'indexing');
+  const indexed = documents.reduce((sum, doc) => sum + indexedCount(doc), 0);
+  ui.search.disabled = indexed === 0;
+  if (processing) {
+    ui.searchStatus.textContent = `検索用テキストを読み込み中… ${processing.name} ${processing.indexed} / ${processing.pdf?.numPages || '—'}ページ`;
+  } else if (!documents.length) {
+    ui.searchStatus.textContent = 'PDFを開くと検索できます';
+  } else if (!indexed) {
+    ui.searchStatus.textContent = '本文の文字を取得できませんでした。ページ表示は利用できます。';
+  } else if (ui.search.value.trim()) {
+    search();
+  } else {
+    ui.searchStatus.textContent = `検索語を入力してください${coverageNote()}`;
+  }
+}
+
+function updateDocumentList() {
+  ui.listBlock.hidden = documents.length === 0;
+  ui.list.replaceChildren();
+  for (const doc of documents) {
+    const row = document.createElement('div');
+    row.className = 'document-row';
+    const select = document.createElement('button');
+    select.type = 'button';
+    select.className = 'document-select' + (doc === activeDoc ? ' active' : '');
+    select.setAttribute('aria-current', doc === activeDoc ? 'true' : 'false');
+    const name = document.createElement('span');
+    name.className = 'document-item-name';
+    name.textContent = doc.name;
+    const detail = document.createElement('span');
+    detail.className = 'document-item-detail';
+    detail.textContent = doc.status === 'error' ? '開けませんでした'
+      : doc.pdf ? `${doc.pdf.numPages}ページ${doc.status === 'indexing' ? '・文字を読取中' : ''}`
+        : '読み込み中';
+    select.append(name, detail);
+    select.addEventListener('click', () => selectDocument(doc));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'document-remove';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', `${doc.name}を削除`);
+    remove.addEventListener('click', () => removeDocument(doc));
+    row.append(select, remove);
+    ui.list.append(row);
+  }
+}
+
+function setControls() {
+  const pdf = activeDoc?.pdf;
+  const total = pdf?.numPages || 0;
+  ui.input.disabled = !pdf;
+  ui.input.max = total || '';
+  ui.input.value = pdf ? currentPage : '';
+  ui.total.textContent = pdf ? `/ ${total}` : '/ —';
+  ui.prev.disabled = !pdf || currentPage <= 1;
+  ui.next.disabled = !pdf || currentPage >= total;
+  ui.zoomIn.disabled = !pdf || zoom >= 2.5;
+  ui.zoomOut.disabled = !pdf || zoom <= 0.5;
+  ui.zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+}
+
+function stopRendering() {
+  pageRenderId++;
+  if (renderTask) { renderTask.cancel(); renderTask = null; }
+  if (textLayerTask) { textLayerTask.cancel(); textLayerTask = null; }
+  ui.textLayer.replaceChildren();
+}
+
+function selectDocument(doc, render = true) {
+  if (!documents.includes(doc)) return;
+  if (doc !== activeDoc) {
+    stopRendering();
+    activeDoc = doc;
+    currentPage = 1;
+    zoom = 1;
+    ui.page.hidden = true;
+  }
+  ui.name.textContent = doc.name;
+  ui.count.textContent = doc.pdf ? `${doc.pdf.numPages}ページ`
+    : doc.status === 'error' ? 'ページ数を取得できませんでした' : 'ページ数を確認中…';
+  ui.empty.hidden = true;
+  setMessage(doc.status === 'error' ? 'PDFを開けませんでした。ファイル形式と端末のブラウザーを確認してください。'
+    : doc.pdf ? '' : 'PDFを読み込んでいます…');
+  setControls();
+  updateDocumentList();
+  if (render && doc.pdf && ui.page.hidden) showPage(1, doc);
+  updateResultSelection();
+}
+
+function resetViewer() {
+  activeDoc = null;
+  currentPage = 1;
+  zoom = 1;
+  ui.name.textContent = 'PDFを選択してください';
+  ui.count.textContent = '複数のPDFをまとめて選択できます';
+  ui.page.hidden = true;
+  ui.empty.hidden = false;
+  setMessage('');
+  setControls();
+  updateDocumentList();
+  updateSearchStatus();
+}
+
+function removeDocument(doc) {
+  const index = documents.indexOf(doc);
+  if (index === -1) return;
+  documents.splice(index, 1);
+  if (doc === activeDoc) {
+    stopRendering();
+    activeDoc = null;
+  }
+  doc.task?.destroy().catch(() => {});
+  if (!activeDoc) {
+    if (documents.length) selectDocument(documents[Math.min(index, documents.length - 1)]);
+    else resetViewer();
+  } else updateDocumentList();
+  search();
+  updateSearchStatus();
+}
+
+function clearDocuments() {
+  collectionId++;
+  stopRendering();
+  const old = documents;
+  documents = [];
+  for (const doc of old) doc.task?.destroy().catch(() => {});
+  ui.search.value = '';
+  ui.results.replaceChildren();
+  resetViewer();
+}
+
+async function addFiles(files) {
+  const accepted = Array.from(files).filter((file) => /\.pdf$/i.test(file.name) || file.type === 'application/pdf');
+  if (!accepted.length) {
+    setMessage('PDFファイルを選択してください。');
+    return;
+  }
+  const generation = collectionId;
+  const added = accepted.map((file) => {
+    const doc = { name: file.name, pdf: null, task: null, pageTexts: [], unreadablePages: 0, indexed: 0, status: 'loading' };
+    documents.push(doc);
+    return { file, doc };
+  });
+  if (!activeDoc) selectDocument(added[0].doc);
+  updateDocumentList();
+  updateSearchStatus();
+  // Process documents in sequence to keep mobile memory and UI responsive.
+  for (const { file, doc } of added) {
+    if (!isCurrent(doc, generation)) continue;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!isCurrent(doc, generation)) continue;
+      doc.task = pdfjsLib.getDocument({
+        data: bytes, isEvalSupported: false,
+        cMapUrl: new URL('./vendor/cmaps/', import.meta.url).href, cMapPacked: true,
+        standardFontDataUrl: new URL('./vendor/standard_fonts/', import.meta.url).href,
+        wasmUrl: new URL('./vendor/wasm/', import.meta.url).href,
+      });
+      doc.pdf = await doc.task.promise;
+      if (!isCurrent(doc, generation)) continue;
+      doc.status = 'indexing';
+      updateDocumentList();
+      if (activeDoc === doc) selectDocument(doc);
+      for (let p = 1; p <= doc.pdf.numPages; p++) {
+        if (!isCurrent(doc, generation)) break;
+        try {
+          const page = await doc.pdf.getPage(p);
+          const content = await readTextContent(page);
+          if (!isCurrent(doc, generation)) break;
+          doc.pageTexts[p - 1] = makeIndex(content.items);
+        } catch (error) {
+          if (!isCurrent(doc, generation)) break;
+          doc.unreadablePages++;
+          doc.pageTexts[p - 1] = null;
+          console.warn(`Text extraction failed in ${doc.name}, page ${p}:`, error);
+        }
+        doc.indexed = p;
+        if (p === doc.pdf.numPages || p % 5 === 0) {
+          updateSearchStatus();
+          if (ui.search.value.trim()) search();
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      if (!isCurrent(doc, generation)) continue;
+      doc.status = 'ready';
+      updateDocumentList();
+      updateSearchStatus();
+      if (ui.search.value.trim()) search();
+    } catch (error) {
+      if (!isCurrent(doc, generation)) continue;
+      doc.status = 'error';
+      if (activeDoc === doc) selectDocument(doc);
+      updateDocumentList();
+      updateSearchStatus();
+      console.error('PDF load failed:', error);
+    }
+  }
+  if (generation === collectionId && !ui.search.disabled && window.matchMedia('(pointer: fine)').matches) ui.search.focus();
+}
+
+async function showPage(number, doc = activeDoc) {
+  if (!doc?.pdf || !documents.includes(doc)) return;
   const next = Number(number);
-  if (!Number.isInteger(next) || next < 1 || next > pdf.numPages) {
+  if (!Number.isInteger(next) || next < 1 || next > doc.pdf.numPages) {
     ui.input.value = currentPage;
     return;
   }
+  if (doc !== activeDoc) selectDocument(doc, false);
   currentPage = next;
   const renderId = ++pageRenderId;
   setControls();
-  ui.results.querySelectorAll('.result').forEach((el) => el.classList.toggle('active', Number(el.dataset.page) === next));
+  updateResultSelection();
   if (textLayerTask) { textLayerTask.cancel(); textLayerTask = null; }
   ui.textLayer.replaceChildren();
   if (renderTask) {
     renderTask.cancel();
     try { await renderTask.promise; } catch (_) { /* cancelled render */ }
   }
-  const activePdf = pdf;
-  const page = await activePdf.getPage(next);
-  if (activePdf !== pdf || renderId !== pageRenderId) return;
+  const page = await doc.pdf.getPage(next);
+  if (doc !== activeDoc || renderId !== pageRenderId) return;
   const viewport = page.getViewport({ scale: zoom });
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
   const context = ui.canvas.getContext('2d', { alpha: false });
@@ -211,9 +316,9 @@ async function showPage(number) {
   renderTask = task;
   try {
     await task.promise;
-    if (activePdf !== pdf || renderId !== pageRenderId) return;
+    if (doc !== activeDoc || renderId !== pageRenderId) return;
     const content = await readTextContent(page);
-    if (activePdf !== pdf || renderId !== pageRenderId) return;
+    if (doc !== activeDoc || renderId !== pageRenderId) return;
     const layer = new pdfjsLib.TextLayer({ textContentSource: content, container: ui.textLayer, viewport });
     textLayerTask = layer;
     await layer.render();
@@ -240,55 +345,71 @@ function addSnippet(container, page, start, length) {
   container.append(highlight, document.createTextNode(after + (end < source.length ? '…' : '')));
 }
 
+function updateResultSelection() {
+  ui.results.querySelectorAll('.result').forEach((el) =>
+    el.classList.toggle('active', el.doc === activeDoc && Number(el.dataset.page) === currentPage));
+}
+
 function search() {
   ui.results.replaceChildren();
   const query = normalize(ui.search.value.trim());
-  if (!query) { ui.searchStatus.textContent = `検索語を入力してください${coverageNote()}`; return; }
+  if (!query) { updateSearchStatus(); return; }
   let matchingPages = 0;
+  let matchingDocuments = 0;
   let totalMatches = 0;
   const fragment = document.createDocumentFragment();
-  pageTexts.forEach((page, index) => {
-    if (!page) return;
-    let position = 0;
-    let count = 0;
-    let first = -1;
-    while ((position = page.normalized.indexOf(query, position)) !== -1) {
-      if (first === -1) first = position;
-      count++;
-      position += Math.max(query.length, 1);
-    }
-    if (!count) return;
-    matchingPages++;
-    totalMatches += count;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'result' + (currentPage === index + 1 ? ' active' : '');
-    button.dataset.page = String(index + 1);
-    const title = document.createElement('span');
-    title.className = 'result-title';
-    const pageLabel = document.createElement('span');
-    pageLabel.textContent = `${index + 1}ページ`;
-    const countLabel = document.createElement('span');
-    countLabel.className = 'result-count';
-    countLabel.textContent = `${count}件`;
-    title.append(pageLabel, countLabel);
-    const snippet = document.createElement('span');
-    snippet.className = 'result-snippet';
-    addSnippet(snippet, page, first, query.length);
-    button.append(title, snippet);
-    button.addEventListener('click', () => showPage(index + 1));
-    fragment.append(button);
-  });
+  for (const doc of documents) {
+    let foundInDocument = false;
+    doc.pageTexts.forEach((page, index) => {
+      if (!page) return;
+      let position = 0;
+      let count = 0;
+      let first = -1;
+      while ((position = page.normalized.indexOf(query, position)) !== -1) {
+        if (first === -1) first = position;
+        count++;
+        position += Math.max(query.length, 1);
+      }
+      if (!count) return;
+      foundInDocument = true;
+      matchingPages++;
+      totalMatches += count;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'result' + (activeDoc === doc && currentPage === index + 1 ? ' active' : '');
+      button.dataset.page = String(index + 1);
+      button.doc = doc;
+      const title = document.createElement('span');
+      title.className = 'result-title';
+      const pageLabel = document.createElement('span');
+      pageLabel.textContent = `${index + 1}ページ`;
+      const countLabel = document.createElement('span');
+      countLabel.className = 'result-count';
+      countLabel.textContent = `${count}件`;
+      title.append(pageLabel, countLabel);
+      const filename = document.createElement('span');
+      filename.className = 'result-filename';
+      filename.textContent = doc.name;
+      const snippet = document.createElement('span');
+      snippet.className = 'result-snippet';
+      addSnippet(snippet, page, first, query.length);
+      button.append(filename, title, snippet);
+      button.addEventListener('click', () => showPage(index + 1, doc));
+      fragment.append(button);
+    });
+    if (foundInDocument) matchingDocuments++;
+  }
   ui.results.append(fragment);
   ui.searchStatus.textContent = matchingPages
-    ? `${matchingPages}ページに ${totalMatches}件見つかりました${coverageNote()}`
+    ? `${matchingDocuments}件のPDF・${matchingPages}ページに ${totalMatches}件見つかりました${coverageNote()}`
     : `一致する文字はありません${coverageNote()}`;
 }
 
 ui.file.addEventListener('change', (event) => {
-  openFile(event.target.files?.[0]);
+  addFiles(event.target.files);
   event.target.value = '';
 });
+ui.clear.addEventListener('click', clearDocuments);
 ui.search.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(search, 160);
@@ -306,5 +427,5 @@ for (const eventName of ['dragenter', 'dragover']) {
 for (const eventName of ['dragleave', 'drop']) {
   ui.stage.addEventListener(eventName, (event) => { event.preventDefault(); ui.stage.classList.remove('dragging'); });
 }
-ui.stage.addEventListener('drop', (event) => openFile(event.dataTransfer?.files?.[0]));
+ui.stage.addEventListener('drop', (event) => addFiles(event.dataTransfer?.files || []));
 setControls();
