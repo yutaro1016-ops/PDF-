@@ -1,6 +1,6 @@
-import * as pdfjsLib from './vendor/pdf.min.mjs';
+import * as pdfjsLib from './vendor/legacy/pdf.min.mjs';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/legacy/pdf.worker.min.mjs', import.meta.url).href;
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -14,6 +14,7 @@ const ui = {
 let documentTask = null;
 let pdf = null;
 let pageTexts = [];
+let unreadablePages = 0;
 let currentPage = 1;
 let zoom = 1;
 let renderTask = null;
@@ -76,6 +77,7 @@ async function openFile(file) {
   if (documentTask) { documentTask.destroy(); documentTask = null; }
   pdf = null;
   pageTexts = [];
+  unreadablePages = 0;
   currentPage = 1;
   zoom = 1;
   ui.name.textContent = file.name;
@@ -111,29 +113,46 @@ async function openFile(file) {
 
     ui.searchStatus.textContent = `検索用テキストを読み込み中… 0 / ${pdf.numPages}ページ`;
     for (let p = 1; p <= pdf.numPages; p++) {
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      if (id !== loadId) return;
-      pageTexts.push(makeIndex(content.items));
+      try {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        if (id !== loadId) return;
+        pageTexts[p - 1] = makeIndex(content.items);
+      } catch (error) {
+        if (id !== loadId) return;
+        unreadablePages++;
+        pageTexts[p - 1] = null;
+        console.warn(`Text extraction failed on page ${p}:`, error);
+      }
       if (p === pdf.numPages || p % 5 === 0) {
         ui.searchStatus.textContent = `検索用テキストを読み込み中… ${p} / ${pdf.numPages}ページ`;
-        await new Promise((resolve) => setTimeout(resolve, 0));
       }
+      // Let page navigation and mobile browsers respond during longer PDFs.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
     if (id !== loadId) return;
-    ui.search.disabled = false;
-    ui.searchStatus.textContent = '検索語を入力してください';
-    ui.search.focus();
+    const indexedPages = pageTexts.filter((page) => page && page.normalized).length;
+    ui.search.disabled = indexedPages === 0;
+    ui.searchStatus.textContent = indexedPages === 0
+      ? '本文の文字を取得できませんでした。ページ表示は利用できます。'
+      : `検索語を入力してください${coverageNote()}`;
+    if (indexedPages && window.matchMedia('(pointer: fine)').matches) ui.search.focus();
   } catch (error) {
     if (id !== loadId) return;
     const message = error?.name === 'PasswordException'
       ? 'パスワード保護されたPDFは、この版では開けません。'
-      : 'PDFを読み込めませんでした。ファイルが壊れていないか確認してください。';
+      : pdf
+        ? 'ページ表示で問題が発生しました。別のブラウザーでもお試しください。'
+        : 'PDFを開けませんでした。ファイル形式と端末のブラウザーを確認してください。';
     setMessage(message);
     ui.searchStatus.textContent = '検索できません';
     if (!pdf) ui.count.textContent = 'ページ数を取得できませんでした';
     console.error('PDF load failed:', error);
   }
+}
+
+function coverageNote() {
+  return unreadablePages ? `（${unreadablePages}ページの文字は読み取れませんでした）` : '';
 }
 
 async function showPage(number) {
@@ -205,11 +224,12 @@ function addSnippet(container, page, start, length) {
 function search() {
   ui.results.replaceChildren();
   const query = normalize(ui.search.value.trim());
-  if (!query) { ui.searchStatus.textContent = '検索語を入力してください'; return; }
+  if (!query) { ui.searchStatus.textContent = `検索語を入力してください${coverageNote()}`; return; }
   let matchingPages = 0;
   let totalMatches = 0;
   const fragment = document.createDocumentFragment();
   pageTexts.forEach((page, index) => {
+    if (!page) return;
     let position = 0;
     let count = 0;
     let first = -1;
@@ -242,8 +262,8 @@ function search() {
   });
   ui.results.append(fragment);
   ui.searchStatus.textContent = matchingPages
-    ? `${matchingPages}ページに ${totalMatches}件見つかりました`
-    : '一致する文字はありません';
+    ? `${matchingPages}ページに ${totalMatches}件見つかりました${coverageNote()}`
+    : `一致する文字はありません${coverageNote()}`;
 }
 
 ui.file.addEventListener('change', (event) => {
