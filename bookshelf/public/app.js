@@ -55,36 +55,66 @@ async function api(path, options) {
   if (!response.ok) throw new Error(result.error || '操作を完了できませんでした。');
   return result;
 }
+let shelves = [], currentShelf = 'all', selected = new Set(), anchorIndex = -1, visibleLimit = 80;
+const shelfUi = { nav:$('shelf-navigation'), name:$('current-shelf-name'), count:$('shelf-count'), edit:$('edit-shelf'), view:$('view-mode'), sort:$('sort-mode'), batch:$('batch-bar'), selected:$('selected-count'), more:$('show-more'), toast:$('shelf-toast') };
+const palette = ['#2f6078','#527a67','#a5644b','#746394','#aa7c37','#486b9b','#77594b','#597782','#8a5e73','#34495c'];
+function bookColor(book) { if (book.bookColor) return book.bookColor; let hash = 0; for (const c of book.id) hash = (hash * 31 + c.charCodeAt(0)) | 0; return palette[Math.abs(hash) % palette.length]; }
+function listForShelf() {
+ const filter = normalize(ui.titleSearch.value.trim());
+ const subset = books.filter(book => (currentShelf === 'all' || (currentShelf === 'uncategorized' ? !book.shelfId : book.shelfId === currentShelf)) && (normalize(book.title).includes(filter) || normalize(book.fileName).includes(filter)));
+ const mode = shelfUi.sort.value;
+ if (mode === 'manual') subset.sort((a,b) => (a.bookOrder ?? 0) - (b.bookOrder ?? 0) || a.createdAt.localeCompare(b.createdAt));
+ if (mode === 'title') subset.sort((a,b) => a.title.localeCompare(b.title,'ja'));
+ if (mode === 'created') subset.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+ if (mode === 'updated') subset.sort((a,b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt));
+ if (mode === 'recent') subset.sort((a,b) => (b.lastOpenedAt || '').localeCompare(a.lastOpenedAt || ''));
+ return subset;
+}
 function updateList() {
-  const filter = normalize(ui.titleSearch.value.trim());
-  ui.list.replaceChildren();
-  const visible = books.filter((book) => normalize(book.title).includes(filter) || normalize(book.fileName).includes(filter));
-  ui.libraryStatus.textContent = `${books.length}件のPDFを保存中${filter ? `・${visible.length}件表示` : ''}`;
-  for (const book of visible) {
-    const row = document.createElement('div'); row.className = 'document-row';
-    const select = document.createElement('button'); select.type = 'button';
-    select.className = 'document-select' + (activeBook?.id === book.id ? ' active' : '');
-    const title = document.createElement('span'); title.className = 'document-item-name'; title.textContent = book.title;
-    select.append(title); select.addEventListener('click', () => openBook(book));
-    if (book.status !== 'ready' || !book.pageCount || book.indexedPages < book.pageCount) {
-      const detail = document.createElement('span'); detail.className = 'document-item-detail';
-      detail.textContent = book.status !== 'ready' ? '保存未完了・削除できます' : '文字の取得は未完了';
-      select.append(detail);
-    }
-    row.append(select);
-    if (book.status === 'ready' && (!book.pageCount || book.indexedPages < book.pageCount)) {
-      const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'document-retry';
-      retry.textContent = '文字を再取得'; retry.setAttribute('aria-label', `${book.title}の文字を再取得`);
-      retry.addEventListener('click', () => reindexBook(book)); row.append(retry);
-    }
-    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'document-remove';
-    remove.textContent = '×'; remove.setAttribute('aria-label', `${book.title}を削除`);
-    remove.addEventListener('click', () => removeBook(book)); row.append(remove);
-    ui.list.append(row);
-  }
-  if (!visible.length && books.length) {
-    const empty = document.createElement('p'); empty.className = 'list-empty'; empty.textContent = '一致するタイトルはありません'; ui.list.append(empty);
-  }
+ const visible = listForShelf(); ui.list.replaceChildren();
+ ui.libraryStatus.textContent = `${books.length}件のPDFを保存中`; shelfUi.count.textContent = `${visible.length}冊`;
+ shelfUi.name.textContent = currentShelf === 'all' ? 'すべての本' : currentShelf === 'uncategorized' ? '未分類' : shelves.find(s => s.id === currentShelf)?.name || '本棚';
+ shelfUi.edit.hidden = currentShelf === 'all' || currentShelf === 'uncategorized';
+ const activeShelf=shelves.find(s=>s.id===currentShelf); const panel=document.querySelector('.shelf-panel'); panel.dataset.design=activeShelf?.design||'simple';panel.style.setProperty('--shelf-bg',activeShelf?.color||'#f5f8f9');panel.style.setProperty('--shelf-board',activeShelf?.boardColor||'#a7b8c1');shelfUi.name.style.color=activeShelf?.textColor||'#172d43';
+ ui.list.dataset.mode = shelfUi.view.value;
+ shelfUi.more.hidden = visible.length <= visibleLimit;
+ for (const [index,book] of visible.slice(0,visibleLimit).entries()) {
+  const row = document.createElement('div'); row.className = 'book-card' + (selected.has(book.id) ? ' selected' : ''); row.draggable = true; row.dataset.id = book.id; row.title = book.title;
+  row.style.setProperty('--book-color',bookColor(book)); row.style.setProperty('--book-text',book.textColor || '#fff');
+  const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(book.id); checkbox.setAttribute('aria-label',book.title+'を選択');
+  checkbox.addEventListener('click', event => { event.stopPropagation(); selectBook(book,index,event); });
+  const cover = document.createElement('div'); cover.className = 'book-cover';
+  if (book.coverImage && book.coverImage !== 'first-page') { const image=document.createElement('img'); image.src=book.coverImage; image.loading='lazy'; image.alt=''; cover.append(image); }
+  else if (book.coverImage === 'first-page' && shelfUi.view.value === 'cover') { const observer=new IntersectionObserver(entries=>{if(entries[0].isIntersecting){observer.disconnect();makeThumbnail(book,cover);}}, {rootMargin:'100px'}); observer.observe(cover); }
+  const icon = document.createElement('span'); icon.className='book-icon'; icon.textContent=book.bookIcon === 'medical' ? '✚' : book.bookIcon === 'star' ? '★' : book.bookIcon === 'bookmark' ? '▮' : 'PDF';
+  const title=document.createElement('span'); title.className='book-title'; title.textContent=book.title;
+  const tags=document.createElement('span'); tags.className='book-tags'; tags.textContent=book.status!=='ready'?'保存未完了':book.pageCount && book.indexedPages<book.pageCount?'文字の取得は未完了':parseTags(book).join(' · ');
+  const menu=document.createElement('button'); menu.type='button'; menu.className='book-menu'; menu.textContent='⋯'; menu.setAttribute('aria-label',book.title+'の操作'); menu.addEventListener('click',event=>{event.stopPropagation();bookMenu(book);});
+  row.append(checkbox,cover,icon,title,tags,menu);
+  row.addEventListener('click',event=>selectBook(book,index,event)); row.addEventListener('dblclick',()=>openBook(book));
+  row.addEventListener('contextmenu',event=>{event.preventDefault();bookMenu(book);});
+  let press, touchDrag=false, dragTimer;
+  row.addEventListener('touchstart',()=>{press=setTimeout(()=>{if(!touchDrag)bookMenu(book);},850);dragTimer=setTimeout(()=>{touchDrag=true;row.classList.add('dragging-book');},400);},{passive:true});
+  row.addEventListener('touchmove',event=>{clearTimeout(press);if(touchDrag){event.preventDefault();document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));document.elementFromPoint(event.touches[0].clientX,event.touches[0].clientY)?.closest('.shelf-nav-item,.book-card')?.classList.add('drop-target');}else clearTimeout(dragTimer);},{passive:false});
+  row.addEventListener('touchend',event=>{clearTimeout(press);clearTimeout(dragTimer);if(touchDrag){const touch=event.changedTouches[0],target=document.elementFromPoint(touch.clientX,touch.clientY)?.closest('.shelf-nav-item,.book-card');if(target?.classList.contains('shelf-nav-item')){const id=target.dataset.shelf;if(id&&id!=='all')moveBook(book.id,id==='uncategorized'?null:id);}else if(target?.classList.contains('book-card')&&target.dataset.id!==book.id){const destination=books.find(b=>b.id===target.dataset.id);moveBook(book.id,destination.shelfId,listForShelf().indexOf(destination));}event.preventDefault();}touchDrag=false;row.classList.remove('dragging-book');document.querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));});
+  row.addEventListener('dragstart',event=>{event.dataTransfer.setData('text/plain',book.id);event.dataTransfer.effectAllowed='move';row.classList.add('dragging-book');});
+  row.addEventListener('dragend',()=>row.classList.remove('dragging-book'));
+  row.addEventListener('dragover',event=>{event.preventDefault();row.classList.add('drop-target');});
+  row.addEventListener('dragleave',()=>row.classList.remove('drop-target'));
+  row.addEventListener('drop',async event=>{event.preventDefault();row.classList.remove('drop-target');const id=event.dataTransfer.getData('text/plain');if(id && id!==book.id) await moveBook(id,book.shelfId,index);});
+  ui.list.append(row);
+ }
+ if (!visible.length) { const empty=document.createElement('p'); empty.className='list-empty';empty.textContent=books.length ? 'この本棚に該当するPDFはありません' : 'PDFを追加してください';ui.list.append(empty); }
+ shelfUi.selected.textContent=`${selected.size}冊を選択中`; shelfUi.batch.hidden=!selected.size;
+}
+function parseTags(book) { try { return JSON.parse(book.tags || '[]'); } catch { return []; } }
+const thumbnailCache=new Map();
+async function makeThumbnail(book,container) {
+ if(thumbnailCache.has(book.id)){container.append(thumbnailCache.get(book.id).cloneNode());return;}
+ if(book.status!=='ready')return;
+ try { const task=pdfjsLib.getDocument({...pdfOptions,url:`/api/library/${encodeURIComponent(book.id)}/file`,disableStream:true,disableAutoFetch:true,rangeChunkSize:1024*1024});
+  try {const doc=await task.promise;const page=await doc.getPage(1);const viewport=page.getViewport({scale:.25});const canvas=document.createElement('canvas');canvas.width=viewport.width;canvas.height=viewport.height;await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const image=document.createElement('img');image.src=canvas.toDataURL('image/jpeg',.65);image.alt='';image.loading='lazy';thumbnailCache.set(book.id,image);if(container.isConnected)container.append(image.cloneNode());}finally{await task.destroy();}
+ }catch(error){console.warn('Thumbnail failed:',error);}
 }
 function setControls() {
   const total = pdf?.numPages || 0;
@@ -120,6 +150,7 @@ async function openBook(book, targetPage = 1) {
     const loaded = await task.promise;
     if (id !== openId) return;
     pdf = loaded; ui.empty.hidden = true; setMessage('');
+    book.lastOpenedAt = new Date().toISOString(); api(`/api/library/${encodeURIComponent(book.id)}`, { method:'PATCH', headers:{'Content-Type':'application/json'},body:JSON.stringify({lastOpenedAt:true}) }).catch(console.warn);
     await showPage(targetPage);
   } catch (error) {
     if (id !== openId) return;
@@ -254,12 +285,12 @@ async function addFiles(files) {
       if (file.size > MAX_PDF_BYTES) throw new Error('1GB以下のPDFを選択してください。');
       const title = file.name.replace(/\.pdf$/i, '').trim() || file.name;
       const created = await api('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, fileName: file.name, size: file.size }) });
+        body: JSON.stringify({ title, fileName: file.name, size: file.size, shelfId: currentShelf === 'all' || currentShelf === 'uncategorized' ? null : currentShelf }) });
       newId = created.id;
       await uploadFile(newId, file);
       saved = true;
       const book = { id: newId, title, fileName: file.name, fileSize: file.size, pageCount: 0,
-        indexedPages: 0, status: 'ready', createdAt: new Date().toISOString() };
+        indexedPages: 0, status: 'ready', createdAt: new Date().toISOString(), shelfId: currentShelf === 'all' || currentShelf === 'uncategorized' ? null : currentShelf, bookOrder: Date.now(), tags: '[]' };
       books.unshift(book); updateList(); updateScopeOptions();
       if (!activeBook) openBook(book);
       try {
@@ -351,7 +382,7 @@ async function searchTerm() {
 }
 async function loadLibrary() {
   try {
-    const result = await api('/api/library'); books = result.books; updateList(); updateScopeOptions();
+    const [result, shelfResult] = await Promise.all([api('/api/library'),api('/api/shelves')]); books = result.books; shelves = shelfResult.shelves; renderNavigation(); updateList(); updateScopeOptions();
     if (books.length) { ui.empty.querySelector('h2').textContent = '本棚からPDFを選択';
       ui.empty.querySelector('p').textContent = '左の一覧から資料を選ぶか、新しいPDFを追加してください。'; }
   } catch (error) {
@@ -360,6 +391,98 @@ async function loadLibrary() {
     ui.libraryStatus.append(link);
   }
 }
+function toast(message, undo) {
+ shelfUi.toast.replaceChildren(document.createTextNode(message));
+ if (undo) { const button=document.createElement('button');button.textContent='元に戻す';button.addEventListener('click',async()=>{await undo();shelfUi.toast.hidden=true;});shelfUi.toast.append(button); }
+ shelfUi.toast.hidden=false; clearTimeout(toast.timer);toast.timer=setTimeout(()=>shelfUi.toast.hidden=true,9000);
+}
+function selectBook(book,index,event) {
+ const visible=listForShelf();
+ if(event.shiftKey && anchorIndex>=0) {const low=Math.min(index,anchorIndex),high=Math.max(index,anchorIndex);for(let n=low;n<=high;n++)selected.add(visible[n].id);}
+ else if(event.ctrlKey || event.metaKey || event.target.type==='checkbox') { selected.has(book.id) ? selected.delete(book.id) : selected.add(book.id); anchorIndex=index; }
+ else { selected.clear();selected.add(book.id);anchorIndex=index; }
+ updateList();
+}
+function renderNavigation() {
+ shelfUi.nav.replaceChildren();
+ const entries=[{id:'all',name:'すべての本'},{id:'uncategorized',name:'未分類'},...shelves.sort((a,b)=>a.shelfOrder-b.shelfOrder)];
+ for(const shelf of entries) {
+  const button=document.createElement('button');button.type='button';button.className='shelf-nav-item'+(currentShelf===shelf.id?' active':'');button.dataset.shelf=shelf.id;button.textContent=`${shelf.name}  ${books.filter(b=>shelf.id==='all'||(shelf.id==='uncategorized'?!b.shelfId:b.shelfId===shelf.id)).length}`;
+  button.addEventListener('click',()=>{currentShelf=shelf.id;visibleLimit=80;selected.clear();renderNavigation();updateList();});
+  button.addEventListener('dragover',event=>{event.preventDefault();button.classList.add('drop-target');});button.addEventListener('dragleave',()=>button.classList.remove('drop-target'));
+  button.addEventListener('drop',async event=>{event.preventDefault();button.classList.remove('drop-target');const id=event.dataTransfer.getData('text/plain');if(id && shelf.id!=='all')await moveBook(id,shelf.id==='uncategorized'?null:shelf.id);});
+  if(shelf.id!=='all' && shelf.id!=='uncategorized') {
+   button.draggable=true;button.addEventListener('dragstart',event=>{event.dataTransfer.setData('application/x-shelf',shelf.id);});
+   button.addEventListener('drop',async event=>{const moving=event.dataTransfer.getData('application/x-shelf');if(moving && moving!==shelf.id){event.stopPropagation();const order=[...shelves].sort((a,b)=>a.shelfOrder-b.shelfOrder).filter(item=>item.id!==moving);order.splice(order.findIndex(item=>item.id===shelf.id),0,shelves.find(item=>item.id===moving));for(let i=0;i<order.length;i++)await updateShelf(order[i].id,{shelfOrder:i+1});}});
+  }
+  shelfUi.nav.append(button);
+ }
+}
+async function updateBook(book, changes) {
+ await api(`/api/library/${book.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)});
+ Object.assign(book,changes); if(changes.tags)book.tags=JSON.stringify(changes.tags);updateList();updateScopeOptions();
+}
+async function updateShelf(id,changes) {
+ await api(`/api/shelves/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)});
+ Object.assign(shelves.find(s=>s.id===id),changes);renderNavigation();updateList();
+}
+async function normalizeShelfOrder(){const ordered=[...shelves].sort((a,b)=>a.shelfOrder-b.shelfOrder);for(let i=0;i<ordered.length;i++)await updateShelf(ordered[i].id,{shelfOrder:i+1});}
+async function moveBook(id,target,index) {
+ const book=books.find(b=>b.id===id);if(!book)return;
+ const previous={shelfId:book.shelfId??null,bookOrder:book.bookOrder??0};
+ try {
+  const items=books.filter(b=>b.shelfId===target && b.id!==id).sort((a,b)=>(a.bookOrder??0)-(b.bookOrder??0));
+  let order=Date.now();if(Number.isInteger(index)) { const before=items[index-1]?.bookOrder??0,after=items[index]?.bookOrder??before+2000;order=(before+after)/2; }
+  await updateBook(book,{shelfId:target,bookOrder:Math.max(0,Math.round(order))});renderNavigation();
+  toast('本を移動しました。',()=>updateBook(book,previous).then(renderNavigation));
+ }catch(error){toast(error.message);}
+}
+async function editBook(book) {
+ const title=prompt('PDFのタイトル',book.title);if(title!==null && title.trim() && title.trim()!==book.title)await updateBook(book,{title:title.trim()});
+}
+async function designBook(book) {
+ const color=prompt('背表紙の色（#RRGGBB）。プリセット：青 #2f6078、緑 #527a67、赤 #a5644b、紫 #746394、黄 #aa7c37、橙 #c06e3a、茶 #77594b、白 #ffffff、黒 #222222、グレー #597782',book.bookColor||bookColor(book));
+ if(color && /^#[0-9a-f]{6}$/i.test(color))await updateBook(book,{bookColor:color,textColor:parseInt(color.slice(1),16)>0xaaaaaa?'#172d43':'#ffffff'});
+ const cover=prompt('表紙：PDFの1ページ目なら first-page、画像を指定する場合は後で「画像を選択」を使用',book.coverImage||'');
+ if(cover==='first-page'||cover==='')await updateBook(book,{coverImage:cover||null});
+}
+async function bookMenu(book) {
+ const choice=prompt(`「${book.title}」\n1 PDFを開く　2 詳細　3 本文検索　4 本棚移動　5 デザイン・色　6 名前変更　7 タグ　8 表紙画像を選択　9 削除　10 上へ　11 下へ　12 文字を再取得`,'1');
+ try {
+  if(choice==='1')openBook(book);
+  if(choice==='2')alert(`${book.title}\n${book.fileName}\n${book.fileSize} bytes\n${book.pageCount||'—'}ページ\nタグ: ${parseTags(book).join(', ')}`);
+  if(choice==='3'){selectedBookIds=new Set([book.id]);updateScopeOptions();ui.search.focus();searchTerm();}
+  if(choice==='4'){const target=prompt('移動先：未分類は 0、その他は本棚名', '0');if(target!==null){const shelf=shelves.find(s=>s.name===target);if(target==='0'||shelf)await moveBook(book.id,shelf?.id||null);else toast('本棚が見つかりません。');}}
+  if(choice==='5')await designBook(book);
+  if(choice==='6')await editBook(book);
+  if(choice==='7'){const tags=prompt('タグをカンマで区切って入力',parseTags(book).join(', '));if(tags!==null)await updateBook(book,{tags:tags.split(',').map(x=>x.trim()).filter(Boolean).slice(0,20)});}
+  if(choice==='8'){const picker=document.createElement('input');picker.type='file';picker.accept='image/png,image/jpeg,image/webp';picker.onchange=()=>{const file=picker.files?.[0];if(!file||file.size>120000){toast('画像は120KB以下にしてください。');return;}const reader=new FileReader();reader.onload=()=>updateBook(book,{coverImage:reader.result}).catch(error=>toast(error.message));reader.readAsDataURL(file);};picker.click();}
+  if(choice==='9')await removeBook(book);
+  if(choice==='12')await reindexBook(book);
+  if(choice==='10'||choice==='11'){const peers=listForShelf(),pos=peers.indexOf(book),other=peers[pos+(choice==='10'?-1:1)];if(other){const old=book.bookOrder??0;await updateBook(book,{bookOrder:other.bookOrder??0});await updateBook(other,{bookOrder:old});shelfUi.sort.value='manual';updateList();}}
+ }catch(error){toast(error.message);}
+}
+async function editShelf() {
+ const shelf=shelves.find(s=>s.id===currentShelf);if(!shelf)return;
+ const action=prompt(`「${shelf.name}」の設定：1 名前変更  2 デザイン  3 色  4 順序  5 削除`,'1');
+ try {
+  if(action==='1'){const name=prompt('本棚名',shelf.name);if(name?.trim())await updateShelf(shelf.id,{name:name.trim()});}
+  if(action==='2'){const design=prompt('simple / modern / wood / darkwood / lightwood / white / black / gray',shelf.design);if(design)await updateShelf(shelf.id,{design});}
+  if(action==='3'){const color=prompt('背景色 #RRGGBB',shelf.color);const boardColor=prompt('棚板の色 #RRGGBB',shelf.boardColor);const textColor=prompt('本棚名の色 #RRGGBB',shelf.textColor);await updateShelf(shelf.id,{color,boardColor,textColor});}
+  if(action==='4'){const n=Number(prompt('本棚の表示順（数字）',shelf.shelfOrder));if(Number.isSafeInteger(n)&&n>=0){await updateShelf(shelf.id,{shelfOrder:n});await normalizeShelfOrder();}}
+  if(action==='5'){const count=books.filter(b=>b.shelfId===shelf.id).length;if(confirm(`「${shelf.name}」を削除しますか？中の${count}冊のPDFは削除せず「未分類」に移します。`)){await api(`/api/shelves/${shelf.id}`,{method:'DELETE'});books.filter(b=>b.shelfId===shelf.id).forEach(b=>b.shelfId=null);shelves=shelves.filter(s=>s.id!==shelf.id);currentShelf='uncategorized';renderNavigation();updateList();toast(`${count}冊を未分類へ移しました。`);}}
+ }catch(error){toast(error.message);}
+}
+$('add-shelf').addEventListener('click',async()=>{const name=prompt('新しい本棚の名前');if(!name?.trim())return;try{const result=await api('/api/shelves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim()})});const data=await api('/api/shelves');shelves=data.shelves;currentShelf=result.id;renderNavigation();updateList();}catch(error){toast(error.message);}});
+shelfUi.edit.addEventListener('click',editShelf);
+shelfUi.view.addEventListener('change',updateList);shelfUi.sort.addEventListener('change',updateList);
+shelfUi.more.addEventListener('click',()=>{visibleLimit+=80;updateList();});
+$('clear-selection').addEventListener('click',()=>{selected.clear();updateList();});
+$('batch-search').addEventListener('click',()=>{selectedBookIds=new Set(selected);updateScopeOptions();ui.search.focus();searchTerm();});
+$('search-shelf').addEventListener('click',()=>{selectedBookIds=currentShelf==='all'?null:new Set(listForShelf().map(b=>b.id));updateScopeOptions();ui.search.focus();searchTerm();});
+$('batch-move').addEventListener('click',async()=>{const name=prompt('移動先：未分類は 0、その他は本棚名','0');if(name===null)return;const shelf=shelves.find(s=>s.name===name);if(name!=='0'&&!shelf)return toast('本棚が見つかりません。');const ids=[...selected],previous=ids.map(id=>({id,shelfId:books.find(b=>b.id===id)?.shelfId??null}));try{await api('/api/library/batch',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,shelfId:shelf?.id??null})});ids.forEach(id=>books.find(b=>b.id===id).shelfId=shelf?.id??null);selected.clear();renderNavigation();updateList();toast(`${ids.length}冊を移動しました。`,async()=>{for(const item of previous)await updateBook(books.find(b=>b.id===item.id),{shelfId:item.shelfId});renderNavigation();});}catch(error){toast(error.message);}});
+$('batch-tags').addEventListener('click',async()=>{const raw=prompt('選択した本に設定するタグ（カンマ区切り）');if(raw===null)return;const tags=raw.split(',').map(x=>x.trim()).filter(Boolean).slice(0,20);try{await api('/api/library/batch',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...selected],tags})});books.filter(b=>selected.has(b.id)).forEach(b=>b.tags=JSON.stringify(tags));updateList();}catch(error){toast(error.message);}});
+$('batch-delete').addEventListener('click',async()=>{const ids=[...selected];if(!confirm(`${ids.length}冊のPDFと検索データを完全に削除しますか？この操作は取り消せません。`))return;for(const id of ids){try{await api(`/api/library/${id}`,{method:'DELETE'});books=books.filter(b=>b.id!==id);if(activeBook?.id===id)clearViewer();}catch(error){toast(`${id}: ${error.message}`);}}selected.clear();renderNavigation();updateList();updateScopeOptions();});
 ui.file.addEventListener('change', (event) => { addFiles(event.target.files); event.target.value = ''; });
 ui.titleSearch.addEventListener('input', updateList);
 ui.rename.addEventListener('click', renameBook);
