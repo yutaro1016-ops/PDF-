@@ -27,7 +27,8 @@ jobs:
           records = []
           for line in Path("import-manifest.txt").read_text().splitlines():
               expected, path = line.split("  ", 1)
-              if path != "index.html":\n                  records.append((expected, path))
+              if path != "index.html":
+                  records.append((expected, path))
 
           def fetch(record):
               expected, path = record
