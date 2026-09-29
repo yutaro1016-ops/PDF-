@@ -54,7 +54,10 @@
             <p>ファイルを選ぶか、ここにドラッグしてください。<br />読み取ったページだけを検索・表示します。</p>
             <label for="file-input" class="primary-button">PDFを選択</label>
           </div>
-          <canvas id="pdf-canvas" hidden aria-label="PDFページ"></canvas>
+          <div id="pdf-page" class="pdf-page" hidden>
+            <canvas id="pdf-canvas" aria-label="PDFページ"></canvas>
+            <div id="text-layer" class="text-layer" aria-label="選択してコピーできるPDF本文"></div>
+          </div>
           <div id="viewer-message" class="viewer-message" role="status" aria-live="polite" hidden></div>
         </div>
       </section>
