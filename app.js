@@ -49,6 +49,25 @@ function makeIndex(items) {
   return { text, normalized, characters };
 }
 
+async function readTextContent(page) {
+  // Safari can render a page while PDF.js getTextContent() fails when it
+  // iterates the ReadableStream. Reading chunks directly avoids that path.
+  const reader = page.streamTextContent().getReader();
+  const content = { items: [], styles: Object.create(null), lang: null };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      content.lang ??= value.lang;
+      Object.assign(content.styles, value.styles);
+      content.items.push(...value.items);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return content;
+}
+
 function setControls() {
   const ready = Boolean(pdf);
   const total = pdf?.numPages || 0;
@@ -115,7 +134,7 @@ async function openFile(file) {
     for (let p = 1; p <= pdf.numPages; p++) {
       try {
         const page = await pdf.getPage(p);
-        const content = await page.getTextContent();
+        const content = await readTextContent(page);
         if (id !== loadId) return;
         pageTexts[p - 1] = makeIndex(content.items);
       } catch (error) {
@@ -193,7 +212,7 @@ async function showPage(number) {
   try {
     await task.promise;
     if (activePdf !== pdf || renderId !== pageRenderId) return;
-    const content = await page.getTextContent();
+    const content = await readTextContent(page);
     if (activePdf !== pdf || renderId !== pageRenderId) return;
     const layer = new pdfjsLib.TextLayer({ textContentSource: content, container: ui.textLayer, viewport });
     textLayerTask = layer;
