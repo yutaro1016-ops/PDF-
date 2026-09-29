@@ -1,0 +1,29 @@
+name: Sync PDF compatibility assets
+on:
+  push:
+    paths:
+      - .github/workflows/sync-pdf-legacy.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify assets
+        run: |
+          mkdir -p vendor/legacy
+          curl -fL --retry 3 -o vendor/legacy/pdf.min.mjs https://pdf-page-finder.yutaro1016.chatgpt.site/vendor/legacy/pdf.min.mjs
+          curl -fL --retry 3 -o vendor/legacy/pdf.worker.min.mjs https://pdf-page-finder.yutaro1016.chatgpt.site/vendor/legacy/pdf.worker.min.mjs
+          echo "0d29c4871eff0b72f3896825f2673ddf7dfbccf815a7095a5d14f5aa68fab0e5  vendor/legacy/pdf.min.mjs" | sha256sum -c -
+          echo "7fc442c268d107d656755252cf38c422a88e825b7f0caaac6a5f58364dff4179  vendor/legacy/pdf.worker.min.mjs" | sha256sum -c -
+      - name: Commit assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vendor/legacy
+          if ! git diff --cached --quiet; then
+            git commit -m "Add verified legacy PDF.js assets"
+            git push
+          fi
