@@ -16,7 +16,13 @@
     <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden />
   </header>
   <main class="workspace">
-    <aside class="sidebar" aria-label="本棚と検索">
+    <aside class="sidebar pane" aria-label="本棚と検索">
+      <div class="pane-head"><strong>本棚・検索</strong><button class="pane-toggle" data-pane="left" type="button" aria-label="本棚・検索を閉じる">◂</button></div>
+    <nav class="shelf-nav" aria-label="本棚ナビゲーション">
+      <strong>本棚</strong><div id="shelf-navigation"></div>
+      <button id="add-shelf" type="button">＋ 本棚を追加</button>
+    </nav>
+
       <div class="document-heading">
         <p class="eyebrow">MY LIBRARY</p>
         <h1>私の本棚</h1>
@@ -40,19 +46,17 @@
       <div id="search-results" class="search-results" aria-label="用語検索結果"></div>
       <div class="privacy-note">資料はログインした利用者の本棚に保存され、別の端末からも開けます。</div>
     </aside>
-    <nav class="shelf-nav" aria-label="本棚ナビゲーション">
-      <strong>本棚</strong><div id="shelf-navigation"></div>
-      <button id="add-shelf" type="button">＋ 本棚を追加</button>
-    </nav>
-    <section class="shelf-panel" aria-label="保管したPDF">
-      <div class="shelf-toolbar"><div><h2 id="current-shelf-name">すべての本</h2><span id="shelf-count"></span></div><div class="shelf-actions"><button id="edit-shelf" type="button" hidden>本棚設定</button><select id="view-mode" aria-label="表示方法"><option value="spine">背表紙</option><option value="cover">表紙</option><option value="list">一覧</option></select><select id="sort-mode" aria-label="並び順"><option value="manual">手動順</option><option value="title">タイトル順</option><option value="created">登録日順</option><option value="updated">更新日順</option><option value="recent">最近閲覧した順</option></select></div></div>
+    <div class="pane-resizer" data-resize="left" role="separator" aria-orientation="vertical" aria-label="本棚・検索の幅を調整" tabindex="0"></div>
+    <section class="shelf-panel pane" aria-label="保管したPDF">
+      <div class="shelf-toolbar"><button class="pane-toggle" data-pane="middle" type="button" aria-label="保管画面を閉じる">◂</button><div><h2 id="current-shelf-name">すべての本</h2><span id="shelf-count"></span></div><div class="shelf-actions"><button id="edit-shelf" type="button" hidden>本棚設定</button><select id="view-mode" aria-label="表示方法"><option value="spine">背表紙</option><option value="cover">表紙</option><option value="list">一覧</option></select><select id="sort-mode" aria-label="並び順"><option value="manual">手動順</option><option value="title">タイトル順</option><option value="created">登録日順</option><option value="updated">更新日順</option><option value="recent">最近閲覧した順</option></select></div></div>
       <div class="shelf-search"><label for="title-search">タイトル検索</label><input id="title-search" type="search" placeholder="この本棚の資料を探す" /><button id="search-shelf" type="button">この本棚で本文検索</button></div>
       <div id="batch-bar" class="batch-bar" hidden><span id="selected-count"></span><button id="batch-search">選択した本から検索</button><button id="batch-move">移動</button><button id="batch-tags">タグ</button><button id="batch-delete">削除</button><button id="clear-selection">解除</button></div>
       <div id="document-list" class="document-list shelf-books" aria-label="保存したPDF"></div><button id="show-more" type="button" hidden>さらに表示</button>
       <p id="shelf-toast" class="shelf-toast" role="status" hidden></p>
     </section>
-    <section class="viewer" aria-label="PDFプレビュー">
-      <div class="toolbar">
+    <div class="pane-resizer" data-resize="middle" role="separator" aria-orientation="vertical" aria-label="保管画面の幅を調整" tabindex="0"></div>
+    <section class="viewer pane" aria-label="PDFプレビュー">
+      <div class="toolbar"><button class="pane-toggle" data-pane="right" type="button" aria-label="PDFビューアを閉じる">▸</button><span class="collapsed-label">PDF</span>
         <div class="page-controls" aria-label="ページ移動">
           <button id="prev-page" class="icon-button" aria-label="前のページ" title="前のページ" disabled>‹</button>
           <label class="page-input-label"><input id="page-input" type="number" min="1" inputmode="numeric" aria-label="ページ番号" disabled /><span id="total-pages">/ —</span></label>
@@ -80,6 +84,25 @@
       </div>
     </section>
   </main>
+  <dialog id="shelf-design-dialog" class="design-dialog" aria-labelledby="shelf-design-title">
+    <form method="dialog" id="shelf-design-form"><h2 id="shelf-design-title">本棚の見た目</h2>
+      <p>デザインを選び、色を調整できます。</p><div id="shelf-design-options" class="design-options" role="group" aria-label="本棚のデザイン"></div>
+      <div class="color-fields"><label>背景色 <input name="color" type="color" /></label><label>棚板の色 <input name="boardColor" type="color" /></label><label>本棚名の文字色 <input name="textColor" type="color" /></label></div>
+      <div class="shelf-manage-actions"><button id="rename-shelf" type="button">名前を変更</button><button id="shelf-up" type="button">前へ</button><button id="shelf-down" type="button">後ろへ</button><button id="delete-shelf" type="button">本棚を削除</button></div>
+      <div class="dialog-actions"><button value="cancel" type="button" class="dialog-cancel">キャンセル</button><button value="save" type="submit" class="dialog-save">保存する</button></div>
+    </form>
+  </dialog>
+  <dialog id="book-design-dialog" class="design-dialog" aria-labelledby="book-design-title">
+    <form method="dialog" id="book-design-form"><h2 id="book-design-title">本の見た目</h2><p id="book-design-subtitle"></p>
+      <label class="field-heading">背表紙の色</label><div id="book-color-options" class="color-options" role="group" aria-label="背表紙の色"></div>
+      <div class="color-fields"><label>自由に選ぶ <input name="bookColor" type="color" /></label><label>文字色 <input name="textColor" type="color" /></label></div>
+      <label class="field-heading">デザイン</label><div id="book-design-options" class="design-options" role="group" aria-label="本のデザイン"></div>
+      <label class="dialog-field">アイコン <select name="bookIcon"><option value="pdf">PDF</option><option value="medical">医療</option><option value="star">星</option><option value="bookmark">しおり</option></select></label>
+      <label class="dialog-field">表紙 <select name="coverType"><option value="none">なし</option><option value="first-page">PDFの1ページ目</option><option value="image">画像を選択</option></select></label>
+      <label class="dialog-field" id="cover-upload-label" hidden>表紙画像 <input name="coverFile" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+      <div class="dialog-actions"><button value="cancel" type="button" class="dialog-cancel">キャンセル</button><button value="save" type="submit" class="dialog-save">保存する</button></div>
+    </form>
+  </dialog>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
