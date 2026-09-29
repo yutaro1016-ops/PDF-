@@ -4,7 +4,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/legacy/pdf.worker.min
 const $ = (id) => document.getElementById(id);
 const ui = {
   file: $('file-input'), list: $('document-list'), libraryStatus: $('library-status'), titleSearch: $('title-search'),
-  name: $('document-name'), rename: $('rename-document'), search: $('search-input'), searchStatus: $('search-status'),
+  name: $('document-name'), rename: $('rename-document'), search: $('search-input'), scope: $('search-scope'), searchStatus: $('search-status'),
   results: $('search-results'), input: $('page-input'), total: $('total-pages'), prev: $('prev-page'), next: $('next-page'),
   zoomIn: $('zoom-in'), zoomOut: $('zoom-out'), zoomLabel: $('zoom-label'), stage: $('canvas-stage'),
   page: $('pdf-page'), canvas: $('pdf-canvas'), textLayer: $('text-layer'), empty: $('empty-state'), message: $('viewer-message'),
@@ -28,6 +28,13 @@ const pdfOptions = { isEvalSupported: false, cMapUrl: new URL('./vendor/cmaps/',
 
 function normalize(value) { return value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ''); }
 function setMessage(message) { ui.message.textContent = message; ui.message.hidden = !message; }
+function updateScopeOptions() {
+  const selected = ui.scope.value;
+  ui.scope.replaceChildren(new Option('すべての本', ''));
+  for (const book of books) ui.scope.add(new Option(book.title, book.id));
+  ui.scope.value = books.some((book) => book.id === selected) ? selected : '';
+  ui.search.placeholder = ui.scope.value ? 'この本から検索' : 'すべてのPDFから検索';
+}
 async function api(path, options) {
   const response = await fetch(path, options);
   const result = await response.json();
@@ -215,7 +222,7 @@ async function addFiles(files) {
         saved = true;
         const book = { id: newId, title, fileName: file.name, fileSize: file.size, pageCount: loaded.numPages,
           indexedPages: 0, status: 'ready', createdAt: new Date().toISOString() };
-        books.unshift(book); updateList();
+        books.unshift(book); updateList(); updateScopeOptions();
         if (!activeBook) openBook(book);
         await indexBook(book, loaded);
       } finally { await task.destroy(); }
@@ -234,7 +241,7 @@ async function removeBook(book) {
     await api(`/api/library/${encodeURIComponent(book.id)}`, { method: 'DELETE' });
     books = books.filter((item) => item.id !== book.id);
     if (activeBook?.id === book.id) clearViewer();
-    updateList(); if (ui.search.value.trim()) searchTerm();
+    updateList(); updateScopeOptions(); if (ui.search.value.trim()) searchTerm();
   } catch (error) { ui.libraryStatus.textContent = error.message; }
 }
 async function renameBook() {
@@ -245,7 +252,7 @@ async function renameBook() {
   try {
     const result = await api(`/api/library/${encodeURIComponent(book.id)}`, { method: 'PATCH',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: proposed }) });
-    book.title = result.title; ui.name.textContent = book.title; updateList();
+    book.title = result.title; ui.name.textContent = book.title; updateList(); updateScopeOptions();
     if (ui.search.value.trim()) searchTerm();
   } catch (error) { ui.libraryStatus.textContent = error.message; }
 }
@@ -267,7 +274,9 @@ async function searchTerm() {
   if (!query) { ui.results.replaceChildren(); ui.searchStatus.textContent = '用語を入力してください'; return; }
   ui.searchStatus.textContent = '用語を検索中…';
   try {
-    const response = await api(`/api/search?q=${encodeURIComponent(query)}`);
+    const params = new URLSearchParams({ q: query });
+    if (ui.scope.value) params.set('book', ui.scope.value);
+    const response = await api(`/api/search?${params}`);
     if (id !== searchId) return;
     searchHits = response.results; ui.results.replaceChildren();
     let total = 0;
@@ -296,7 +305,7 @@ async function searchTerm() {
 }
 async function loadLibrary() {
   try {
-    const result = await api('/api/library'); books = result.books; updateList();
+    const result = await api('/api/library'); books = result.books; updateList(); updateScopeOptions();
     if (books.length) { ui.empty.querySelector('h2').textContent = '本棚からPDFを選択';
       ui.empty.querySelector('p').textContent = '左の一覧から資料を選ぶか、新しいPDFを追加してください。'; }
   } catch (error) {
@@ -309,6 +318,10 @@ ui.file.addEventListener('change', (event) => { addFiles(event.target.files); ev
 ui.titleSearch.addEventListener('input', updateList);
 ui.rename.addEventListener('click', renameBook);
 ui.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(searchTerm, 250); });
+ui.scope.addEventListener('change', () => {
+  ui.search.placeholder = ui.scope.value ? 'この本から検索' : 'すべてのPDFから検索';
+  searchTerm();
+});
 ui.prev.addEventListener('click', () => showPage(currentPage - 1));
 ui.next.addEventListener('click', () => showPage(currentPage + 1));
 ui.input.addEventListener('change', () => showPage(ui.input.value));
