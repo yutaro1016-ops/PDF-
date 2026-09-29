@@ -12,8 +12,8 @@
   <body>
     <header class="topbar">
       <div class="brand"><span class="brand-icon" aria-hidden="true">⌕</span><span>PDFページ検索</span></div>
-      <label class="open-button" for="file-input">PDFを開く</label>
-      <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
+      <label class="open-button" for="file-input">PDFを追加</label>
+      <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden />
     </header>
 
     <main class="workspace">
@@ -21,11 +21,15 @@
         <div class="document-heading">
           <p class="eyebrow">DOCUMENT</p>
           <h1 id="document-name">PDFを選択してください</h1>
-          <p id="page-count" class="muted">ページ数は読み込み後に自動表示されます</p>
+          <p id="page-count" class="muted">複数のPDFをまとめて選択できます</p>
+        </div>
+        <div id="document-list-block" class="document-list-block" hidden>
+          <div class="document-list-heading"><span>読み込み済みPDF</span><button id="clear-documents" type="button">すべて削除</button></div>
+          <div id="document-list" class="document-list" aria-label="読み込み済みPDF"></div>
         </div>
 
         <div class="search-block">
-          <label for="search-input">本文を検索</label>
+          <label for="search-input">すべてのPDFから本文を検索</label>
           <div class="search-field"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="キーワードを入力" autocomplete="off" disabled /></div>
           <p id="search-status" class="supporting" role="status" aria-live="polite">PDFを開くと検索できます</p>
         </div>
@@ -51,7 +55,7 @@
           <div id="empty-state" class="empty-state">
             <div class="empty-illustration" aria-hidden="true"><span>PDF</span><i></i><i></i><i></i></div>
             <h2>PDFを開いて、ページを探す</h2>
-            <p>ファイルを選ぶか、ここにドラッグしてください。<br />読み取ったページだけを検索・表示します。</p>
+            <p>複数のPDFを選ぶか、ここにドラッグしてください。<br />読み取れた文字をまとめて検索できます。</p>
             <label for="file-input" class="primary-button">PDFを選択</label>
           </div>
           <div id="pdf-page" class="pdf-page" hidden>
