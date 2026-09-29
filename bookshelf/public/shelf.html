@@ -22,11 +22,6 @@
         <h1>私の本棚</h1>
         <p id="library-status" class="muted" role="status" aria-live="polite">本棚を読み込み中…</p>
       </div>
-      <div class="title-search-block">
-        <label for="title-search">タイトル検索</label>
-        <input id="title-search" type="search" placeholder="資料の名前を探す" autocomplete="off" />
-      </div>
-      <div id="document-list" class="document-list" aria-label="保存したPDF"></div>
       <div class="search-block">
         <label for="search-input">本文の用語検索</label>
         <div class="search-scope-row">
@@ -45,6 +40,17 @@
       <div id="search-results" class="search-results" aria-label="用語検索結果"></div>
       <div class="privacy-note">資料はログインした利用者の本棚に保存され、別の端末からも開けます。</div>
     </aside>
+    <nav class="shelf-nav" aria-label="本棚ナビゲーション">
+      <strong>本棚</strong><div id="shelf-navigation"></div>
+      <button id="add-shelf" type="button">＋ 本棚を追加</button>
+    </nav>
+    <section class="shelf-panel" aria-label="保管したPDF">
+      <div class="shelf-toolbar"><div><h2 id="current-shelf-name">すべての本</h2><span id="shelf-count"></span></div><div class="shelf-actions"><button id="edit-shelf" type="button" hidden>本棚設定</button><select id="view-mode" aria-label="表示方法"><option value="spine">背表紙</option><option value="cover">表紙</option><option value="list">一覧</option></select><select id="sort-mode" aria-label="並び順"><option value="manual">手動順</option><option value="title">タイトル順</option><option value="created">登録日順</option><option value="updated">更新日順</option><option value="recent">最近閲覧した順</option></select></div></div>
+      <div class="shelf-search"><label for="title-search">タイトル検索</label><input id="title-search" type="search" placeholder="この本棚の資料を探す" /><button id="search-shelf" type="button">この本棚で本文検索</button></div>
+      <div id="batch-bar" class="batch-bar" hidden><span id="selected-count"></span><button id="batch-search">選択した本から検索</button><button id="batch-move">移動</button><button id="batch-tags">タグ</button><button id="batch-delete">削除</button><button id="clear-selection">解除</button></div>
+      <div id="document-list" class="document-list shelf-books" aria-label="保存したPDF"></div><button id="show-more" type="button" hidden>さらに表示</button>
+      <p id="shelf-toast" class="shelf-toast" role="status" hidden></p>
+    </section>
     <section class="viewer" aria-label="PDFプレビュー">
       <div class="toolbar">
         <div class="page-controls" aria-label="ページ移動">
