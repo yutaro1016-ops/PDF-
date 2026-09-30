@@ -27,5 +27,11 @@ class MigrationTest(unittest.TestCase):
         db.execute("DELETE FROM shelves WHERE id='s'")
         self.assertEqual(db.execute('SELECT shelf_id FROM books').fetchone()[0],None)
         self.assertEqual(db.execute('SELECT count(*) FROM pages').fetchone()[0],1)
+        for migration in sorted((ROOT / 'drizzle').glob('*.sql')):
+            if migration.name > '0002_misty_jasper_sitwell.sql':
+                db.executescript(migration.read_text())
+        self.assertEqual(db.execute('SELECT id,title FROM books').fetchone(), ('existing-id','Existing'))
+        self.assertEqual(db.execute('SELECT body FROM pages').fetchone()[0], '検索語')
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM shares').fetchone()[0], 0)
 
 if __name__ == '__main__': unittest.main()
