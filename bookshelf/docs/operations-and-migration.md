@@ -44,3 +44,8 @@ scripts/health-check.py は公開ヘルスAPIのDB/R2到達のみを判定し、
 bookshelf/配下に全アプリソース・lockfile・build helperを保存。PDF.jsの200資産は既存同版npm tarballから scripts/prepare-pdf-vendor.py で再現し、tarballと各ファイルのSHA256を照合する。機密データは入れない。取得は開発/ビルド時だけで、公開アプリはローカル資産を使う。
 手順: cd bookshelf → npm run install:ci → python3 scripts/prepare-pdf-vendor.py → npm run build。Sitesへの公開は同じプロジェクトの認証済みソース保存→ビルド済みarchiveの保存→同じURLへデプロイ。GitHub ActionsだけでSites公開する正式なサービス資格情報/APIは未確認で自動公開は未設定。公開版のSitesソースSHAとGitHub commitを照合記録する。
 ロールバック: version17の保存済みarchive付き版へ再デプロイ。追加のaccount_lifecycleテーブルを削除せず残す（既存データ変更なし）。容量/退会を有効化した後は旧版が停止状態を無視するため単純にversion17へ戻さず互換修正版で対応する。本番DB/PDFを古いバックアップで上書きしない。
+
+## version19候補の継続記録
+正式な本番全量export/recoveryポイント/保持期間/サービス資格情報は引き続き確認できず、独立した本番全量復元・自動暗号化取得は実行していない。運営元への質問と必要権限、監視通知の受信手順/費用条件はplatform-confirmation-request.mdを参照。問い合わせ送信、外部契約、cron有効化、自動公開設定、環境切替は行っていない。
+本番退会/容量制限はOFFのまま。退会競合・本人再認証・バックアップ内消去はbrowser-acceptance-plan.mdの受入条件を満たすまで有効化禁止。新たなPDF受信ストリーム長チェックは既存PDF/DB設定の移行を伴わない。コードのロールバックはv18 archiveへの再デプロイで、DB/R2の置換は不要。
+大型ローカル試験: NODE_PATH=<canvas-tools>/node_modules node tests/large_pdf_test.mjs。既定は32,128,512,1024MiB。LARGE_PDF_MIBで段階を指定。入力/パート/完成ファイルは専用一時ディレクトリのみで、通常終了時に清掃する。強制終了した場合のpdf-large-*残存は自作テストデータだけだが、所在・生成者を確認せず汎用rmを実行しない。患者資料や既存PDFを使用しない。本番登録の負荷試験は運用枠・費用確認後に専用テストアカウントで実施する。

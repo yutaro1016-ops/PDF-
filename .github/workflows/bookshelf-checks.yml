@@ -29,10 +29,15 @@ jobs:
       - run: node tests/color_presets_test.mjs
       - run: node tests/thumbnail_test.mjs
       - run: node tests/folder_backup_test.mjs
+      - run: node tests/upload_stream_test.mjs
       - run: npm install --prefix /tmp/pdf-engine-tools --ignore-scripts @napi-rs/canvas@0.1.81
       - run: node tests/pdf_engine_test.mjs
         env:
           NODE_PATH: /tmp/pdf-engine-tools/node_modules
+      - run: node tests/large_pdf_test.mjs
+        env:
+          NODE_PATH: /tmp/pdf-engine-tools/node_modules
+          LARGE_PDF_MIB: '32,128,512,1024'
       - run: node tests/sharing_test.mjs
         env:
           NODE_PATH: /tmp/pdf-engine-tools/node_modules

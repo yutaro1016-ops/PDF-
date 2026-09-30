@@ -1,4 +1,4 @@
-import { bucket, currentUser, database, failure, fileKey, PART_BYTES, ownedBook, sameOrigin, serverError } from "../../shared";
+import { bucket, currentUser, database, expectedLengthBody, failure, fileKey, PART_BYTES, ownedBook, sameOrigin, serverError } from "../../shared";
 
 export const runtime = "edge";
 
@@ -51,7 +51,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (book.status !== "uploading") return failure("すでに保存済みです。", 409);
     if (Number(request.headers.get("content-length")) !== book.file_size || Number(book.file_size) > PART_BYTES || !request.body || book.upload_id)
       return failure("PDFのサイズを確認できません。");
-    await bucket().put(fileKey(userId, id), request.body, { httpMetadata: { contentType: "application/pdf" } });
+    await bucket().put(fileKey(userId, id), expectedLengthBody(request.body,Number(book.file_size)), { httpMetadata: { contentType: "application/pdf" } });
     await database().prepare("UPDATE books SET status = 'ready' WHERE id = ? AND user_id = ?")
       .bind(id, userId).run();
     return Response.json({ ok: true });

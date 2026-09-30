@@ -8,3 +8,21 @@ export function makePDF(padding=0){
  objects.forEach((obj,i)=>{offsets.push(offset);const data=Buffer.concat([Buffer.from(`${i+1} 0 obj\n`),Buffer.from(obj),Buffer.from('\nendobj\n')]);chunks.push(data);offset+=data.length;});
  const xref=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${offset}\n%%EOF\n`;chunks.push(Buffer.from(xref));return new Uint8Array(Buffer.concat(chunks));
 }
+
+// Disk writer for large fixtures: never allocates the padding in memory.
+export async function writePDF(destination,padding=0){
+ const {open}=await import('node:fs/promises');
+ if(!Number.isSafeInteger(padding)||padding<0)throw new RangeError('Invalid padding');
+ const handle=await open(destination,'wx');let offset=0;
+ const write=async data=>{const bytes=Buffer.from(data);let done=0;while(done<bytes.length){const result=await handle.write(bytes,done,bytes.length-done,offset);if(!result.bytesWritten)throw Error('Fixture write stalled');done+=result.bytesWritten;offset+=result.bytesWritten;}};
+ try{
+  const small=makePDF();const marker=Buffer.from(small).indexOf('xref\n');
+  const prefix=Buffer.from(small).subarray(0,marker);await write(prefix);
+  const offsets=[...prefix.toString().matchAll(/^(\d+) 0 obj$/gm)].map(match=>match.index);
+  const extraOffset=offset;
+  if(padding){await write(`10 0 obj\n<< /Length ${padding} >>\nstream\n`);const chunk=Buffer.alloc(1024*1024,32);for(let left=padding;left>0;left-=chunk.length)await write(chunk.subarray(0,Math.min(left,chunk.length)));await write('\nendstream\nendobj\n');offsets.push(extraOffset);}
+  const xrefOffset=offset;
+  await write(`xref\n0 ${offsets.length+1}\n0000000000 65535 f \n`+offsets.map(value=>String(value).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${offsets.length+1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+  return offset;
+ }finally{await handle.close();}
+}

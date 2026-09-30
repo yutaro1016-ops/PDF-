@@ -44,6 +44,16 @@ export async function readLimitedBody(request:Request,limit:number){
  const chunks:Uint8Array[]=[];let size=0;
  try{while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>limit){await reader.cancel();return null;}chunks.push(part.value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}finally{reader.releaseLock();}
 }
+// Validate actual streamed bytes, not only the caller's Content-Length.
+// At most one source chunk is held; an incomplete part remains retryable.
+export function expectedLengthBody(body:ReadableStream<Uint8Array>,expected:number){
+ const reader=body.getReader();let received=0,released=false;
+ const release=()=>{if(!released){released=true;reader.releaseLock();}};
+ return new ReadableStream<Uint8Array>({
+  async pull(controller){try{const part=await reader.read();if(part.done){if(received!==expected)throw new RangeError('PDF body length mismatch');release();controller.close();return;}received+=part.value.byteLength;if(received>expected)throw new RangeError('PDF body length exceeded');controller.enqueue(part.value);}catch(error){try{await reader.cancel(error);}finally{release();controller.error(error);}}},
+  async cancel(reason){try{await reader.cancel(reason);}finally{release();}}
+ });
+}
 export function serverError(error: unknown) {
  const requestId=crypto.randomUUID();
  console.error(JSON.stringify({event:'storage_request_failed',requestId,time:new Date().toISOString(),type:error instanceof Error?error.name:'unknown'}));

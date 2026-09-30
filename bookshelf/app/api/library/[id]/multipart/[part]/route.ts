@@ -1,4 +1,4 @@
-import { bucket, currentUser, failure, fileKey, ownedBook, PART_BYTES, sameOrigin, serverError } from "../../../shared";
+import { bucket, currentUser, expectedLengthBody, failure, fileKey, ownedBook, PART_BYTES, sameOrigin, serverError } from "../../../shared";
 
 export const runtime = "edge";
 
@@ -17,7 +17,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       Number(request.headers.get("content-length")) !== length || !request.body)
       return failure("分割データのサイズを確認できません。");
     const uploaded = await bucket().resumeMultipartUpload(fileKey(userId, id), String(book.upload_id))
-      .uploadPart(number, request.body);
+      .uploadPart(number, expectedLengthBody(request.body,length));
     return Response.json({ partNumber: uploaded.partNumber, etag: uploaded.etag });
   } catch (error) { return serverError(error); }
 }
