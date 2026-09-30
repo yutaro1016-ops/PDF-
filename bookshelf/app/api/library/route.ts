@@ -7,9 +7,9 @@ export async function GET() {
   if (!userId) return failure("ログインが必要です。", 401);
   try {
     const { results } = await database().prepare(
-      "SELECT id, title, file_name AS fileName, file_size AS fileSize, page_count AS pageCount, indexed_pages AS indexedPages, status, created_at AS createdAt, shelf_id AS shelfId, book_color AS bookColor, text_color AS textColor, book_design AS bookDesign, book_icon AS bookIcon, cover_image AS coverImage, book_order AS bookOrder, tags, updated_at AS updatedAt, last_opened_at AS lastOpenedAt FROM books WHERE user_id = ? AND status != 'importing' ORDER BY created_at DESC"
+      "SELECT id, title, file_name AS fileName, file_size AS fileSize, page_count AS pageCount, indexed_pages AS indexedPages, status, created_at AS createdAt, shelf_id AS shelfId, book_color AS bookColor, text_color AS textColor, book_design AS bookDesign, book_icon AS bookIcon, CASE WHEN cover_image LIKE 'data:image/%' THEN 'custom' ELSE cover_image END AS coverImage, book_order AS bookOrder, tags, updated_at AS updatedAt, last_opened_at AS lastOpenedAt FROM books WHERE user_id = ? AND status != 'importing' ORDER BY created_at DESC"
     ).bind(userId).all();
-    return Response.json({ books: results });
+    return Response.json({ books: results },{headers:{'Cache-Control':'private, no-store'}});
   } catch (error) { return serverError(error); }
 }
 
