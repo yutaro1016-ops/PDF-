@@ -1,3 +1,4 @@
+import {ACTIVE_ACCOUNT_SQL,USED_BYTES_SQL,capacityEnforced,PROPOSED_BYTES} from '../account/policy';
 import { currentUser, database, failure, MAX_PDF_BYTES, sameOrigin, serverError } from "./shared";
 
 export const runtime = "edge";
@@ -28,9 +29,10 @@ export async function POST(request: Request) {
     if (!/\.pdf$/i.test(fileName) || !title || !Number.isInteger(size) || size < 1 || size > MAX_PDF_BYTES)
       return failure("1GB以下のPDFを選択してください。");
     const id = crypto.randomUUID();
-    await database().prepare(
-      "INSERT INTO books (id, user_id, title, file_name, file_size, created_at, shelf_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, userId, title, fileName, size, new Date().toISOString(), shelfId).run();
+    const result=await database().prepare(
+      `INSERT INTO books (id,user_id,title,file_name,file_size,created_at,shelf_id) SELECT ?,?,?,?,?,?,? WHERE ${ACTIVE_ACCOUNT_SQL} AND (?=0 OR (${USED_BYTES_SQL})+?<=?)`
+    ).bind(id,userId,title,fileName,size,new Date().toISOString(),shelfId,userId,capacityEnforced()?1:0,userId,userId,size,PROPOSED_BYTES).run();
+    if(!result.meta.changes)return failure('容量上限または退会処理により追加できません。',409);
     return Response.json({ id }, { status: 201 });
   } catch (error) { return serverError(error); }
 }

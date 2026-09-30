@@ -52,3 +52,4 @@ tsconfig.tsbuildinfo
 *.sqlite
 *.pages.ndjson
 __pycache__/
+!.env.example

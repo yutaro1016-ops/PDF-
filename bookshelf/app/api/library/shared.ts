@@ -14,8 +14,11 @@ export function bucket() {
   return env.BUCKET;
 }
 
+export async function authenticatedUser(){return (await getChatGPTUser())?.userId ?? null;}
 export async function currentUser() {
-  return (await getChatGPTUser())?.userId ?? null;
+  const id=await authenticatedUser();if(!id)return null;
+  const state=await database().prepare("SELECT status FROM account_lifecycle WHERE user_id=?").bind(id).first<{status:string}>();
+  return state && state.status!=='active'?null:id;
 }
 
 export function failure(message: string, status = 400) {

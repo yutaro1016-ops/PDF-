@@ -7,7 +7,7 @@
   <meta name="description" content="PDFを本棚に保存し、タイトルと本文の用語を検索できます。" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>PDF本棚</title>
-  <link rel="stylesheet" href="/styles.css?v=17" />
+  <link rel="stylesheet" href="/styles.css?v=18" />
 </head>
 <body>
   <header class="topbar">
@@ -119,14 +119,14 @@
   </dialog>
   <dialog id="data-dialog" class="design-dialog" aria-labelledby="data-title">
     <h2 id="data-title">データ管理</h2><p id="data-usage" role="status">使用量を確認中…</p>
-    <div class="data-actions"><a class="primary-button" href="/api/account/export" download>本棚と本の設定を書き出す</a><button id="folder-backup" type="button">PDF・検索データも保存</button></div>
+    <div class="data-actions"><a class="primary-button" href="/api/account/export" download>本棚と本の設定を書き出す</a><button id="folder-backup" type="button">PDF・検索データも保存</button><button id="resume-backup" type="button">途中の保存を再開</button><button id="cancel-backup" type="button" hidden>保存を中断</button></div>
     <p>設定ファイルにはPDF本体と本文検索データは含まれません。「PDF・検索データも保存」は対応ブラウザーでフォルダーへ保存します。</p>
     <label class="dialog-field">本の設定を復元する <input id="restore-file" type="file" accept="application/json,.json" /></label>
     <p>同じPDF IDで現在保存されている本の名前・色・タグ・所属・順序を復元します。PDFと検索データは変更しません。削除されたPDFや本棚の復旧には対応していません。</p>
     <div id="pdf-downloads" class="share-book-list" aria-label="PDFの書き出し"></div>
-    <p>退会・データ削除の自動処理は準備中です。現在この画面からデータが削除されることはありません。</p>
+    <section aria-labelledby="closure-title"><h3 id="closure-title">退会とデータ削除</h3><p id="closure-status">機能の状態を確認中…</p><button id="closure-prepare" type="button" hidden>削除内容を確認</button><div id="closure-confirm" hidden><p>自分のPDF・検索データ・本棚・共有リンクを削除します。他の利用者が取り込み済みのコピーは残ります。開始後は取り消せません。</p><label><input id="closure-exported" type="checkbox" />必要なデータを書き出し、削除範囲を確認しました</label><label class="dialog-field">確認のため「退会してすべて削除」と入力<input id="closure-phrase" type="text" autocomplete="off" /></label><button id="closure-start" type="button">退会処理を開始</button></div><button id="closure-advance" type="button" hidden>退会処理を再開</button></section>
     <p id="data-status" role="status" aria-live="polite"></p><div class="dialog-actions"><button id="data-close" type="button">閉じる</button></div>
   </dialog>
-  <script type="module" src="/app.js?v=17"></script>
+  <script type="module" src="/app.js?v=18"></script>
 </body>
 </html>

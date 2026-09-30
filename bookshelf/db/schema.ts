@@ -73,3 +73,11 @@ export const importItems = sqliteTable('import_items', {
   uploadId: text('upload_id'), parts: text('parts').notNull().default('[]'),
   pageCursor: integer('page_cursor').notNull().default(0),
 }, table => [primaryKey({columns:[table.jobId,table.sourceId]})]);
+
+// Empty by default. A lifecycle tombstone prevents concurrent new writes during closure.
+export const accountLifecycle = sqliteTable('account_lifecycle', {
+  userId: text('user_id').primaryKey(), status: text('status').notNull().default('active'),
+  nonceHash: text('nonce_hash'), nonceExpires: integer('nonce_expires').notNull().default(0),
+  jobId: text('job_id'), leaseToken: text('lease_token'), leaseUntil: integer('lease_until').notNull().default(0),
+  updatedAt: text('updated_at').notNull(),
+});

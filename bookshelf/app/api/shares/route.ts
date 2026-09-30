@@ -1,3 +1,4 @@
+import {ACTIVE_ACCOUNT_SQL} from '../account/policy';
 import {currentUser,database,failure,sameOrigin,serverError} from '../library/shared';
 import {tokenHash,jobView} from './shared';
 export const runtime='edge';
@@ -24,9 +25,10 @@ export async function POST(request:Request){
     const days=payload.expiryDays??7;if(![0,1,7,30].includes(days))return failure('有効期限が不正です。');
     const token=(crypto.randomUUID()+crypto.randomUUID()).replaceAll('-',''),id=crypto.randomUUID(),now=new Date().toISOString(),expires=days?new Date(Date.now()+days*86400000).toISOString():null;
     await db.batch([
-      db.prepare('INSERT INTO shares(id,user_id,token_hash,name,kind,shelf_json,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,user,await tokenHash(token),name,payload.kind,shelf?JSON.stringify(shelf):null,now,expires),
-      db.prepare('INSERT INTO share_books(share_id,book_id,position) SELECT ?,value,CAST(key AS INTEGER) FROM json_each(?)').bind(id,JSON.stringify(ids))
+      db.prepare(`INSERT INTO shares(id,user_id,token_hash,name,kind,shelf_json,created_at,expires_at) SELECT ?,?,?,?,?,?,?,? WHERE ${ACTIVE_ACCOUNT_SQL}` ).bind(id,user,await tokenHash(token),name,payload.kind,shelf?JSON.stringify(shelf):null,now,expires,user),
+      db.prepare('INSERT INTO share_books(share_id,book_id,position) SELECT ?,value,CAST(key AS INTEGER) FROM json_each(?) WHERE EXISTS(SELECT 1 FROM shares WHERE id=? AND user_id=?)').bind(id,JSON.stringify(ids),id,user)
     ]);
+    if(!await db.prepare('SELECT id FROM shares WHERE id=? AND user_id=?').bind(id,user).first())return failure('退会処理中です。',409);
     return Response.json({id,url:`${new URL(request.url).origin}/shelf.html?share=${token}`,count:ids.length,expiresAt:expires},{status:201,headers:{'Cache-Control':'private, no-store'}});
   }catch(error){return serverError(error);}
 }

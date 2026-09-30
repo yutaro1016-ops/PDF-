@@ -1,3 +1,4 @@
+import {ACTIVE_ACCOUNT_SQL,USED_BYTES_SQL,capacityEnforced,PROPOSED_BYTES} from '../../../account/policy';
 import {currentUser,database,failure,sameOrigin,serverError} from '../../../library/shared';
 import {activeShare,sharedBooks,jobView} from '../../shared';
 export const runtime='edge';
@@ -22,14 +23,15 @@ export async function POST(request:Request,context:{params:Promise<{token:string
     if(payload.mode==='new'){
       const name=String(payload.shelfName||share.name).trim().slice(0,80);if(!name)return failure('本棚名を入力してください。');
       shelfId=crypto.randomUUID();const shelf=share.shelf_json?JSON.parse(share.shelf_json):{};
-      statements.push(db.prepare('INSERT INTO shelves(id,user_id,name,shelf_order,color,board_color,text_color,design,created_at,updated_at) VALUES(?,?,?,(SELECT COALESCE(MAX(shelf_order),0)+1 FROM shelves WHERE user_id=?),?,?,?,?,?,?)').bind(shelfId,user,name,user,shelf.color||'#e9edf0',shelf.board_color||'#a8b7bd',shelf.text_color||'#172d43',shelf.design||'simple',now,now));
+      statements.push(db.prepare('INSERT INTO shelves(id,user_id,name,shelf_order,color,board_color,text_color,design,created_at,updated_at) SELECT ?,?,?,(SELECT COALESCE(MAX(shelf_order),0)+1 FROM shelves WHERE user_id=?),?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM import_jobs WHERE id=? AND user_id=?)').bind(shelfId,user,name,user,shelf.color||'#e9edf0',shelf.board_color||'#a8b7bd',shelf.text_color||'#172d43',shelf.design||'simple',now,now,payload.requestId,user));
     }else if(payload.mode==='existing'){
       if(shelfId&&!await db.prepare('SELECT id FROM shelves WHERE id=? AND user_id=?').bind(shelfId,user).first())return failure('追加先の本棚が見つかりません。',404);
     }else return failure('追加先を選択してください。');
-    statements.push(db.prepare('INSERT INTO import_jobs(id,user_id,share_id,shelf_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').bind(payload.requestId,user,share.id,shelfId,fresh.length?'pending':'done',now,now));
+    const bytes=fresh.reduce((sum,book)=>sum+Number(book.file_size),0);
+    statements.unshift(db.prepare(`INSERT INTO import_jobs(id,user_id,share_id,shelf_id,status,created_at,updated_at) SELECT ?,?,?,?,?,?,? WHERE ${ACTIVE_ACCOUNT_SQL} AND (?=0 OR (${USED_BYTES_SQL})+?<=?)`).bind(payload.requestId,user,share.id,shelfId,fresh.length?'pending':'done',now,now,user,capacityEnforced()?1:0,user,user,bytes,PROPOSED_BYTES));
     // JSON_each keeps parameter count bounded even with many books.
     const rows=fresh.map((book,position)=>({sourceId:book.id,targetId:crypto.randomUUID(),position}));
-    statements.push(db.prepare("INSERT INTO import_items(job_id,source_id,target_id,position,metadata) SELECT ?,json_extract(j.value,'$.sourceId'),json_extract(j.value,'$.targetId'),json_extract(j.value,'$.position'),json_object('title',b.title,'file_name',b.file_name,'file_size',b.file_size,'page_count',b.page_count,'book_color',b.book_color,'text_color',b.text_color,'book_design',b.book_design,'book_icon',b.book_icon,'cover_image',b.cover_image,'tags',b.tags) FROM json_each(?) j JOIN books b ON b.id=json_extract(j.value,'$.sourceId') WHERE b.user_id=? AND b.status='ready'").bind(payload.requestId,JSON.stringify(rows),share.user_id));
-    await db.batch(statements);return Response.json({job:await jobView(payload.requestId,user)},{status:201});
+    statements.push(db.prepare("INSERT INTO import_items(job_id,source_id,target_id,position,metadata) SELECT ?,json_extract(j.value,'$.sourceId'),json_extract(j.value,'$.targetId'),json_extract(j.value,'$.position'),json_object('title',b.title,'file_name',b.file_name,'file_size',b.file_size,'page_count',b.page_count,'book_color',b.book_color,'text_color',b.text_color,'book_design',b.book_design,'book_icon',b.book_icon,'cover_image',b.cover_image,'tags',b.tags) FROM json_each(?) j JOIN books b ON b.id=json_extract(j.value,'$.sourceId') WHERE b.user_id=? AND b.status='ready' AND EXISTS(SELECT 1 FROM import_jobs WHERE id=? AND user_id=?)").bind(payload.requestId,JSON.stringify(rows),share.user_id,payload.requestId,user));
+    await db.batch(statements);const job=await jobView(payload.requestId,user);if(!job)return failure('容量上限または退会処理により取り込めません。',409);return Response.json({job},{status:201});
   }catch(error){return serverError(error);}
 }
