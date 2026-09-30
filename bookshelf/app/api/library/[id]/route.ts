@@ -40,7 +40,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const book = await ownedBook(id, userId);
     if (!book) return failure("資料が見つかりません。", 404);
     if (book.upload_id) await bucket().resumeMultipartUpload(fileKey(userId, id), String(book.upload_id)).abort();
-    await bucket().delete(fileKey(userId, id));
+    await bucket().delete([fileKey(userId, id), `${userId}/${id}.thumbnail.jpg`]);
     await database().batch([
       database().prepare("DELETE FROM pages WHERE book_id = ?").bind(id),
       database().prepare("DELETE FROM books WHERE id = ? AND user_id = ?").bind(id, userId),
