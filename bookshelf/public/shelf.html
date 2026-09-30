@@ -12,7 +12,7 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="brand-icon" aria-hidden="true">⌕</span><span>PDF本棚</span></div>
-    <div class="header-actions"><a class="signout" href="/signout-with-chatgpt?return_to=%2F">ログアウト</a><label class="open-button" for="file-input">PDFを追加</label></div>
+    <div class="header-actions"><button id="manage-sharing" type="button">共有</button><a class="signout" href="/signout-with-chatgpt?return_to=%2F">ログアウト</a><label class="open-button" for="file-input">PDFを追加</label></div>
     <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden />
   </header>
   <main class="workspace">
@@ -48,9 +48,9 @@
     </aside>
     <div class="pane-resizer" data-resize="left" role="separator" aria-orientation="vertical" aria-label="本棚・検索の幅を調整" tabindex="0"></div>
     <section class="shelf-panel pane" aria-label="保管したPDF">
-      <div class="shelf-toolbar"><button class="pane-toggle" data-pane="middle" type="button" aria-label="保管画面を閉じる">◂</button><div><h2 id="current-shelf-name">すべての本</h2><span id="shelf-count"></span></div><div class="shelf-actions"><button id="bulk-settings" type="button">一括設定</button><button id="edit-shelf" type="button" hidden>本棚設定</button><select id="view-mode" aria-label="表示方法"><option value="cover">表紙</option><option value="spine">背表紙</option><option value="list">一覧</option></select><select id="sort-mode" aria-label="並び順"><option value="manual">手動順</option><option value="title">タイトル順</option><option value="created">登録日順</option><option value="updated">更新日順</option><option value="recent">最近閲覧した順</option></select></div></div>
+      <div class="shelf-toolbar"><button class="pane-toggle" data-pane="middle" type="button" aria-label="保管画面を閉じる">◂</button><div><h2 id="current-shelf-name">すべての本</h2><span id="shelf-count"></span></div><div class="shelf-actions"><button id="share-shelf" type="button" hidden>本棚を共有</button><button id="bulk-settings" type="button">一括設定</button><button id="edit-shelf" type="button" hidden>本棚設定</button><select id="view-mode" aria-label="表示方法"><option value="cover">表紙</option><option value="spine">背表紙</option><option value="list">一覧</option></select><select id="sort-mode" aria-label="並び順"><option value="manual">手動順</option><option value="title">タイトル順</option><option value="created">登録日順</option><option value="updated">更新日順</option><option value="recent">最近閲覧した順</option></select></div></div>
       <div class="shelf-search"><label for="title-search">タイトル検索</label><input id="title-search" type="search" placeholder="この本棚の資料を探す" /><button id="search-shelf" type="button">この本棚で本文検索</button></div>
-      <div id="batch-bar" class="batch-bar" hidden><span id="selected-count"></span><button id="batch-search">選択した本から検索</button><button id="batch-move">移動</button><button id="batch-tags">タグ</button><button id="batch-delete">削除</button><button id="clear-selection">解除</button></div>
+      <div id="batch-bar" class="batch-bar" hidden><span id="selected-count"></span><button id="batch-search">選択した本から検索</button><button id="batch-share">共有</button><button id="batch-move">移動</button><button id="batch-tags">タグ</button><button id="batch-delete">削除</button><button id="clear-selection">解除</button></div>
       <div id="document-list" class="document-list shelf-books" aria-label="保存したPDF"></div><button id="show-more" type="button" hidden>さらに表示</button>
       <p id="shelf-toast" class="shelf-toast" role="status" hidden></p>
     </section>
@@ -112,6 +112,10 @@
       <label class="dialog-field">アイコン <select name="icon"><option value="keep">変更しない</option><option value="pdf">PDF</option><option value="medical">医療</option><option value="star">星</option><option value="bookmark">しおり</option></select></label>
       <p id="bulk-settings-status" role="status"></p><div class="dialog-actions"><button type="button" id="bulk-cancel">キャンセル</button><button type="submit" class="dialog-save">適用する</button></div>
     </form>
+  </dialog>
+  <dialog id="share-dialog" class="design-dialog share-dialog" aria-labelledby="share-title">
+    <h2 id="share-title">共有</h2><div id="share-content"></div><p id="share-status" role="status" aria-live="polite"></p>
+    <div class="dialog-actions"><button id="share-close" type="button">閉じる</button></div>
   </dialog>
   <script type="module" src="/app.js"></script>
 </body>
