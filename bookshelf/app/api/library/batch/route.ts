@@ -7,8 +7,8 @@ export async function PATCH(request: Request) {
   const payload = await request.json() as Record<string, unknown>;
   if (!Array.isArray(payload.ids) || !payload.ids.length || payload.ids.length > 100 || payload.ids.some(id => typeof id !== 'string' || !/^[a-f0-9-]{36}$/i.test(id))) return failure('対象を確認できません。');
   const ids = [...new Set(payload.ids)] as string[];
-  const db = database(); const placeholders = ids.map(()=>'?').join(',');
-  const owned = await db.prepare(`SELECT COUNT(*) AS n FROM books WHERE user_id = ? AND id IN (${placeholders})`).bind(user,...ids).first<{n:number}>();
+  const db = database(); const placeholders = 'SELECT value FROM json_each(?)';
+  const owned = await db.prepare(`SELECT COUNT(*) AS n FROM books WHERE user_id = ? AND id IN (${placeholders})`).bind(user,JSON.stringify(ids)).first<{n:number}>();
   if (owned?.n !== ids.length) return failure('対象が見つかりません。',404);
   const changes: string[] = []; const args: unknown[] = [];
   if ('shelfId' in payload) {
@@ -29,7 +29,7 @@ export async function PATCH(request: Request) {
    changes.push(column + ' = ?'); args.push(value);
   }
   if (!changes.length) return failure('変更項目がありません。');
-  await db.prepare(`UPDATE books SET ${changes.join(', ')}, updated_at = ? WHERE user_id = ? AND id IN (${placeholders})`).bind(...args,new Date().toISOString(),user,...ids).run();
+  await db.prepare(`UPDATE books SET ${changes.join(', ')}, updated_at = ? WHERE user_id = ? AND id IN (${placeholders})`).bind(...args,new Date().toISOString(),user,JSON.stringify(ids)).run();
   return Response.json({ ok:true });
  } catch(error) { return serverError(error); }
 }
