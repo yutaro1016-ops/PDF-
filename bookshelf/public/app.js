@@ -52,7 +52,7 @@ function updateScopeOptions() {
 async function api(path, options) {
   const response = await fetch(path, options);
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || '操作を完了できませんでした。');
+  if (!response.ok) {const error=new Error(result.error || '操作を完了できませんでした。');error.status=response.status;throw error;}
   return result;
 }
 let shelves = [], currentShelf = 'all', selected = new Set(), anchorIndex = -1, visibleLimit = 80;
@@ -76,6 +76,7 @@ function updateList() {
  ui.libraryStatus.textContent = `${books.length}件のPDFを保存中`; shelfUi.count.textContent = `${visible.length}冊`;
  shelfUi.name.textContent = currentShelf === 'all' ? 'すべての本' : currentShelf === 'uncategorized' ? '未分類' : shelves.find(s => s.id === currentShelf)?.name || '本棚';
  shelfUi.edit.hidden = currentShelf === 'all' || currentShelf === 'uncategorized';
+ $('share-shelf').hidden=currentShelf==='all';
  const activeShelf=shelves.find(s=>s.id===currentShelf); const panel=document.querySelector('.shelf-panel'); panel.dataset.design=activeShelf?.design||'simple';panel.style.setProperty('--shelf-bg',activeShelf?.color||'#f5f8f9');panel.style.setProperty('--shelf-board',activeShelf?.boardColor||'#a7b8c1');shelfUi.name.style.color=activeShelf?.textColor||'#172d43';
  ui.list.dataset.mode = shelfUi.view.value;
  shelfUi.more.hidden = visible.length <= visibleLimit;
@@ -422,7 +423,7 @@ async function loadLibrary() {
       ui.empty.querySelector('p').textContent = '左の一覧から資料を選ぶか、新しいPDFを追加してください。'; }
   } catch (error) {
     ui.libraryStatus.replaceChildren(document.createTextNode(error.message + ' '));
-    const link = document.createElement('a'); link.href = '/signin-with-chatgpt?return_to=%2F'; link.textContent = 'ログインする';
+    const link = document.createElement('a'); link.href = '/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.search); link.textContent = 'ログインする';
     ui.libraryStatus.append(link);
   }
 }
@@ -508,7 +509,7 @@ for(const dialog of [bookDialog,shelfDialog])dialog.querySelector('.dialog-cance
 $('book-design-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.target;const coverType=form.elements.coverType.value;if(coverType==='image'&&!coverData?.startsWith('data:image/')){toast('表紙画像を選択してください。');return;}try{await updateBook(editingBook,{bookColor:form.elements.bookColor.value,textColor:form.elements.textColor.value,bookDesign:picked($('book-design-options')),bookIcon:form.elements.bookIcon.value,coverImage:coverType==='none'?'none':coverType==='first-page'?'first-page':coverData});bookDialog.close();toast('本のデザインを保存しました。');}catch(error){toast(error.message);}});
 $('shelf-design-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.target;try{await updateShelf(editingShelf.id,{design:picked($('shelf-design-options')),color:form.elements.color.value,boardColor:form.elements.boardColor.value,textColor:form.elements.textColor.value});shelfDialog.close();toast('本棚のデザインを保存しました。');}catch(error){toast(error.message);}});
 async function bookMenu(book) {
- const choice=prompt(`「${book.title}」\n1 PDFを開く　2 詳細　3 本文検索　4 本棚移動　5 デザイン・色　6 名前変更　7 タグ　8 表紙画像を選択　9 削除　10 上へ　11 下へ　12 文字を再取得`,'1');
+ const choice=prompt(`「${book.title}」\n1 PDFを開く　2 詳細　3 本文検索　4 本棚移動　5 デザイン・色　6 名前変更　7 タグ　8 表紙画像を選択　9 削除　10 上へ　11 下へ　12 文字を再取得　13 共有`,'1');
  try {
   if(choice==='1')openBook(book);
   if(choice==='2')alert(`${book.title}\n${book.fileName}\n${book.fileSize} bytes\n${book.pageCount||'—'}ページ\nタグ: ${parseTags(book).join(', ')}`);
@@ -520,6 +521,7 @@ async function bookMenu(book) {
   if(choice==='8'){const picker=document.createElement('input');picker.type='file';picker.accept='image/png,image/jpeg,image/webp';picker.onchange=()=>{const file=picker.files?.[0];if(!file||file.size>120000){toast('画像は120KB以下にしてください。');return;}const reader=new FileReader();reader.onload=()=>updateBook(book,{coverImage:reader.result}).catch(error=>toast(error.message));reader.readAsDataURL(file);};picker.click();}
   if(choice==='9')await removeBook(book);
   if(choice==='12')await reindexBook(book);
+  if(choice==='13')openShareCreator({kind:'books',ids:[book.id]});
   if(choice==='10'||choice==='11'){const peers=listForShelf(),pos=peers.indexOf(book),other=peers[pos+(choice==='10'?-1:1)];if(other){const old=book.bookOrder??0;await updateBook(book,{bookOrder:other.bookOrder??0});await updateBook(other,{bookOrder:old});shelfUi.sort.value='manual';updateList();}}
  }catch(error){toast(error.message);}
 }
@@ -598,4 +600,89 @@ ui.zoomOut.addEventListener('click', () => { zoom = Math.max(.5, Math.round((zoo
 for (const name of ['dragenter', 'dragover']) ui.stage.addEventListener(name, (event) => { event.preventDefault(); ui.stage.classList.add('dragging'); });
 for (const name of ['dragleave', 'drop']) ui.stage.addEventListener(name, (event) => { event.preventDefault(); ui.stage.classList.remove('dragging'); });
 ui.stage.addEventListener('drop', (event) => addFiles(event.dataTransfer?.files || []));
-setControls(); loadLibrary();
+setControls(); loadLibrary().then(()=>{const token=new URL(location.href).searchParams.get('share');if(token)openReceivedShare(token);});
+
+// Sharing uses authenticated server APIs; only device-local UI state stays here.
+const shareDialog=$('share-dialog'),shareContent=$('share-content'),shareStatus=$('share-status');
+let runningImport=false,pauseImport=false,receivedToken=null,receivedJob=null,shareRequestId=null;
+function shareElement(tag,text,className){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(className)el.className=className;return el;}
+function shareButton(text,action){const button=shareElement('button',text);button.type='button';button.addEventListener('click',action);return button;}
+function startShareDialog(title){$('share-title').textContent=title;shareContent.replaceChildren();shareStatus.textContent='';if(!shareDialog.open)shareDialog.showModal();}
+function shareLogin(){const link=shareElement('a','ログインして確認する');link.href='/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.search);link.target='_top';shareContent.append(link);}
+function shareError(error){shareStatus.textContent=error.message||'操作を完了できませんでした。';}
+$('share-close').addEventListener('click',()=>{pauseImport=true;shareDialog.close();});
+shareDialog.addEventListener('cancel',()=>{pauseImport=true;});
+$('share-shelf').addEventListener('click',()=>openShareCreator({kind:'shelf',shelfId:currentShelf==='uncategorized'?null:currentShelf}));
+$('batch-share').addEventListener('click',()=>openShareCreator({kind:'books',ids:[...selected]}));
+$('manage-sharing').addEventListener('click',openShareManager);
+function openShareCreator(payload){
+ startShareDialog('共有リンクを作成');
+ const targets=payload.kind==='shelf'?books.filter(book=>(book.shelfId??null)===payload.shelfId):books.filter(book=>payload.ids.includes(book.id));
+ const name=payload.kind==='shelf'?(shelves.find(s=>s.id===payload.shelfId)?.name||'未分類'):'選択した本';
+ shareContent.append(shareElement('p',`${name}：${targets.length}冊を共有します。`));
+ const list=shareElement('ul',undefined,'share-book-list');for(const book of targets)list.append(shareElement('li',book.title));shareContent.append(list);
+ shareContent.append(shareElement('p','リンクを知っているログイン済み利用者が、PDF・タグ・表紙設定・本文検索データを自分の本棚へコピーできます。共有リンクを作成した後に、この本棚へ追加した本は対象になりません。'));
+ const expiryLabel=shareElement('label','有効期限 ','dialog-field'),expiry=shareElement('select');for(const [value,label] of [[7,'7日間'],[1,'1日間'],[30,'30日間'],[0,'期限なし']]){const option=shareElement('option',label);option.value=value;expiry.append(option);}expiryLabel.append(expiry);shareContent.append(expiryLabel);
+ const create=shareButton('共有リンクを作成',async()=>{
+  create.disabled=true;shareStatus.textContent='共有リンクを作成中…';
+  try{const result=await api('/api/shares',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,expiryDays:Number(expiry.value)})});
+   shareContent.replaceChildren(shareElement('p',`${result.count}冊の共有リンクを作成しました。`));
+   const label=shareElement('label','共有リンク','dialog-field'),input=shareElement('input');input.readOnly=true;input.value=result.url;input.setAttribute('aria-label','共有リンク');input.addEventListener('click',()=>input.select());label.append(input);shareContent.append(label);
+   shareContent.append(shareButton('リンクをコピー',async()=>{try{await navigator.clipboard.writeText(result.url);shareStatus.textContent='リンクをコピーしました。';}catch{input.focus();input.select();shareStatus.textContent='リンクを選択しました。コピーしてください。';}}));
+   shareContent.append(shareElement('p','リンクの停止は、画面上部の「共有」から行えます。追加済みのコピーは、リンク停止後も受け取った人の本棚に残ります。'));shareStatus.textContent='';
+  }catch(error){shareError(error);create.disabled=false;}
+ });shareContent.append(create);
+}
+async function openShareManager(){
+ startShareDialog('共有の管理');
+ const label=shareElement('label','受け取った共有リンク','dialog-field'),input=shareElement('input');input.type='url';input.placeholder='共有リンクを貼り付け';label.append(input);shareContent.append(label);
+ shareContent.append(shareButton('共有内容を確認',()=>{try{const url=new URL(input.value.trim());if(url.origin!==location.origin)throw Error('このアプリの共有リンクを入力してください。');const token=url.searchParams.get('share');if(!token)throw Error('共有リンクを確認してください。');history.replaceState(null,'',location.pathname+'?share='+encodeURIComponent(token));openReceivedShare(token);}catch(error){shareError(error);}}));
+ const list=shareElement('div',undefined,'share-management');shareContent.append(list);shareStatus.textContent='共有の一覧を取得中…';
+ try{const response=await api('/api/shares');shareStatus.textContent='';
+ for(const entry of response.imports||[]){const row=shareElement('div',undefined,'share-management-row');row.append(shareElement('strong','取り込み中：'+entry.name),shareElement('span',entry.job.done+' / '+entry.job.total+'冊を追加済み'),shareButton('再開・中止',()=>{receivedToken=null;receivedJob=entry.job;startShareDialog('本の取り込み');renderImportProgress();}));list.append(row);}if(!response.shares.length)list.append(shareElement('p','作成した共有リンクはありません。'));
+ for(const share of response.shares){const row=shareElement('div',undefined,'share-management-row');const expired=share.expiresAt&&Date.parse(share.expiresAt)<=Date.now(),inactive=share.revokedAt||expired;row.append(shareElement('strong',share.name),shareElement('span',`${share.count}冊 · ${share.revokedAt?'停止済み':expired?'期限切れ':share.expiresAt?'期限 '+new Date(share.expiresAt).toLocaleDateString('ja-JP'):'期限なし'}`));if(!inactive)row.append(shareButton('共有を停止',async()=>{if(!confirm(`「${share.name}」の共有を停止しますか？追加済みのコピーは相手の本棚に残ります。`))return;try{await api('/api/shares',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:share.id})});openShareManager();}catch(error){shareError(error);}}));list.append(row);}
+ }catch(error){shareError(error);if(error.status===401)shareLogin();else shareContent.append(shareButton('共有の管理へ',openShareManager));}
+}
+async function openReceivedShare(token){
+ if(runningImport){toast('取り込み中です。いったん停止してから別の共有を開いてください。');return;}
+ receivedToken=token;receivedJob=null;shareRequestId=crypto.randomUUID();startShareDialog('共有された本棚・本');shareStatus.textContent='共有内容を確認中…';
+ try{const data=await api('/api/shares/'+encodeURIComponent(token));shareStatus.textContent='';
+ shareContent.append(shareElement('h3',data.name),shareElement('p',`${data.books.length}冊${data.expiresAt?' · 期限 '+new Date(data.expiresAt).toLocaleDateString('ja-JP'):''}`));
+ if(data.unavailable)shareContent.append(shareElement('p',`${data.unavailable}冊は共有元で削除されたか、保存未完了のため追加できません。`));
+ if(data.activeImport){receivedJob=data.activeImport;renderImportProgress();return;}
+ const added=new Set(data.added.map(book=>book.sourceId)),list=shareElement('div',undefined,'share-book-list'),checks=[];
+ const selectAll=shareButton('すべて選択',()=>checks.forEach(box=>{if(!box.disabled)box.checked=true;})),clear=shareButton('選択解除',()=>checks.forEach(box=>box.checked=false));shareContent.append(selectAll,clear);
+ for(const book of data.books){const label=shareElement('label',undefined,'share-book-choice'),check=shareElement('input');check.type='checkbox';check.value=book.id;check.disabled=added.has(book.id);check.checked=!check.disabled;checks.push(check);label.append(check,shareElement('span',book.title+(check.disabled?'（追加済み）':'')));list.append(label);}shareContent.append(list);
+ const modeLabel=shareElement('label','追加方法','dialog-field'),mode=shareElement('select');for(const [value,text] of [['existing','自分の本棚へ本を追加'],['new','新しい本棚ごと追加']]){const option=shareElement('option',text);option.value=value;mode.append(option);}if(data.kind==='shelf')mode.value='new';modeLabel.append(mode);shareContent.append(modeLabel);
+ const destinationLabel=shareElement('label','追加先','dialog-field'),destination=shareElement('select');for(const shelf of [{id:'',name:'未分類'},...shelves]){const option=shareElement('option',shelf.name);option.value=shelf.id;destination.append(option);}destinationLabel.append(destination);shareContent.append(destinationLabel);
+ const nameLabel=shareElement('label','新しい本棚の名前','dialog-field'),name=shareElement('input');name.value=data.name;name.maxLength=80;nameLabel.append(name);shareContent.append(nameLabel);
+ function updateMode(){destinationLabel.hidden=mode.value!=='existing';nameLabel.hidden=mode.value!=='new';}mode.addEventListener('change',updateMode);updateMode();
+ shareContent.append(shareElement('p','追加した本は自分専用のコピーです。共有元の変更・削除とは連動しません。'));
+ const add=shareButton('自分の本棚に追加',async()=>{
+  const ids=checks.filter(check=>check.checked&&!check.disabled).map(check=>check.value);
+  if(!ids.length&&!(data.kind==='shelf'&&!data.books.length&&mode.value==='new')){shareStatus.textContent='追加する本を選択してください。';return;}
+  if(!confirm(`${ids.length}冊を${mode.value==='new'?`新しい本棚「${name.value}」`:destination.options[destination.selectedIndex].text}へコピーしますか？`))return;
+  add.disabled=true;shareStatus.textContent='追加を準備中…';
+  try{const response=await api('/api/shares/'+encodeURIComponent(token)+'/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestId:shareRequestId,ids,mode:mode.value,shelfId:destination.value||null,shelfName:name.value})});receivedJob=response.job;await loadLibrary();renderImportProgress();runImport();}catch(error){shareError(error);add.disabled=false;}
+ });shareContent.append(add);
+ }catch(error){shareError(error);if(error.status===401)shareLogin();else shareContent.append(shareButton('共有の管理へ',openShareManager));}
+}
+function renderImportProgress(){
+ const job=receivedJob;shareContent.replaceChildren();
+ shareContent.append(shareElement('p','大容量PDFは分割してコピーします。この画面を開いている間、取り込みを進めます。停止後は同じ共有リンクから再開できます。'));
+ const progress=shareElement('progress');progress.max=Math.max(job.total,1);progress.value=job.done;progress.setAttribute('aria-label','追加した本の冊数');shareContent.append(progress);
+ const current=job.items.find(item=>item.status!=='done');
+ shareContent.append(shareElement('p',`${job.done} / ${job.total}冊を追加済み${current?' · '+current.title:''}`));
+ if(current)shareContent.append(shareElement('p',current.status==='pages'?'本文検索データをコピー中':`${Math.round(current.copiedBytes/1024/1024)} / ${Math.ceil(current.bytes/1024/1024)} MB`));
+ if(job.status==='done'){shareContent.append(shareElement('p','追加が完了しました。'));shareContent.append(shareButton('追加した本棚を表示',()=>{currentShelf=job.shelfId||'uncategorized';renderNavigation();updateList();shareDialog.close();}));return;}
+ if(job.status==='cancelled'){shareContent.append(shareElement('p','取り込みを中止しました。完了済みの本は自分の本棚に残っています。'));shareContent.append(shareButton('共有内容へ戻る',()=>receivedToken?openReceivedShare(receivedToken):openShareManager()));return;}
+ if(runningImport)shareContent.append(shareButton('いったん停止',()=>{pauseImport=true;shareStatus.textContent='処理中の転送が完了したら停止します。';}));
+ else {shareContent.append(shareButton('取り込みを再開',runImport));shareContent.append(shareButton('取り込みを中止',async()=>{if(!confirm('未完了のコピーを削除して中止しますか？追加済みの本は残ります。'))return;try{const response=await api('/api/shares/imports/'+job.id,{method:'DELETE'});receivedJob=response.job;shareStatus.textContent='';await loadLibrary();renderImportProgress();}catch(error){shareError(error);}}));}
+}
+async function runImport(){
+ if(runningImport||!receivedJob||receivedJob.status!=='pending')return;
+ runningImport=true;pauseImport=false;shareStatus.textContent='';renderImportProgress();
+ try{await loadLibrary();while(receivedJob.status==='pending'&&!pauseImport){const previousDone=receivedJob.done;const response=await api('/api/shares/imports/'+receivedJob.id,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});receivedJob=response.job;if(receivedJob.done!==previousDone)await loadLibrary();if(shareDialog.open)renderImportProgress();}if(receivedJob.status==='done'){await loadLibrary();if(receivedJob.total===0)renderImportProgress();}}
+ catch(error){shareError(error);}
+ finally{runningImport=false;if(shareDialog.open)renderImportProgress();}
+}
