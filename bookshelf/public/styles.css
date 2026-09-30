@@ -71,3 +71,5 @@
 .book-action-menu button:hover,.book-action-menu button:focus-visible{background:#edf4f8;outline:2px solid #8baabd;outline-offset:-2px}
 .book-action-menu button.danger{color:#a33333;border-top:1px solid #e0e7ed;margin-top:4px}
 @media(pointer:coarse){.book-action-menu button{min-height:44px}}
+.data-actions{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}.pdf-download{display:block;padding:8px 0;font-size:.875rem;overflow-wrap:anywhere}#data-dialog p{font-size:.875rem;line-height:1.6}#data-status{overflow-wrap:anywhere;color:#355463}
+@media(pointer:coarse){.book-menu,.pane-toggle{min-width:36px;min-height:36px}.shelf-actions button,.header-actions button{min-height:40px}}
