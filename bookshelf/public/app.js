@@ -88,7 +88,7 @@ function updateList() {
   checkbox.addEventListener('click', event => { event.stopPropagation(); selectBook(book,index,event); });
   const cover = document.createElement('div'); cover.className = 'book-cover';
   if (book.coverImage && !['first-page','none'].includes(book.coverImage)) { const image=document.createElement('img'); image.src=book.coverImage; image.loading='lazy'; image.alt=''; cover.append(image); }
-  else if ((!book.coverImage || book.coverImage === 'first-page') && shelfUi.view.value === 'cover') { const observer=new IntersectionObserver(entries=>{if(entries[0].isIntersecting){observer.disconnect();makeThumbnail(book,cover);}}, {rootMargin:'100px'}); observer.observe(cover); }
+  else if ((!book.coverImage || book.coverImage === 'first-page') && shelfUi.view.value === 'cover') { if('IntersectionObserver' in window){const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();makeThumbnail(book,cover);}}, {rootMargin:'100px'});observer.observe(cover);}else setTimeout(()=>makeThumbnail(book,cover),0); }
   const icon = document.createElement('span'); icon.className='book-icon'; icon.textContent=book.bookIcon === 'medical' ? '✚' : book.bookIcon === 'star' ? '★' : book.bookIcon === 'bookmark' ? '▮' : 'PDF';
   const title=document.createElement('span'); title.className='book-title'; title.textContent=book.title;
   const tags=document.createElement('span'); tags.className='book-tags'; tags.textContent=book.status!=='ready'?'保存未完了':book.pageCount && book.indexedPages<book.pageCount?'文字の取得は未完了':parseTags(book).join(' · ');
@@ -111,21 +111,45 @@ function updateList() {
  shelfUi.selected.textContent=`${selected.size}冊を選択中`; shelfUi.batch.hidden=!selected.size;
 }
 function parseTags(book) { try { return JSON.parse(book.tags || '[]'); } catch { return []; } }
-const thumbnailCache=new Map();
-const thumbnailPending=new Map();let thumbnailActive=0;const thumbnailWaiters=[];
-async function thumbnailSlot(){if(thumbnailActive>=2)await new Promise(resolve=>thumbnailWaiters.push(resolve));thumbnailActive++;}
-function releaseThumbnail(){thumbnailActive--;thumbnailWaiters.shift()?.();}
+const thumbnailCache=new Map(),thumbnailPending=new Map();
+let thumbnailActive=0;const thumbnailQueue=[];
+function thumbnailSlot(book){return new Promise(resolve=>{thumbnailQueue.push({size:book.fileSize||0,resolve});pumpThumbnails();});}
+function pumpThumbnails(){thumbnailQueue.sort((a,b)=>a.size-b.size);while(thumbnailActive<2&&thumbnailQueue.length){thumbnailActive++;thumbnailQueue.shift().resolve();}}
+function releaseThumbnail(){thumbnailActive--;pumpThumbnails();}
+function thumbnailStatus(container,text){const status=document.createElement('span');status.className='thumbnail-status';status.textContent=text;container.replaceChildren(status);}
 async function makeThumbnail(book,container) {
- if(thumbnailPending.has(book.id)){await thumbnailPending.get(book.id);if(container.isConnected&&thumbnailCache.has(book.id))container.append(thumbnailCache.get(book.id).cloneNode());return;}
- const job=generateThumbnail(book,container);thumbnailPending.set(book.id,job);try{await job;}finally{thumbnailPending.delete(book.id);}
+ thumbnailStatus(container,'表紙を取得中…');
+ if(!thumbnailPending.has(book.id)){const job=generateThumbnail(book);thumbnailPending.set(book.id,job);job.finally(()=>thumbnailPending.delete(book.id));}
+ const image=await thumbnailPending.get(book.id);
+ if(!container.isConnected)return;
+ if(image){container.replaceChildren(image.cloneNode());return;}
+ const retry=document.createElement('button');retry.type='button';retry.className='thumbnail-retry';retry.textContent='表紙を再取得';retry.setAttribute('aria-label',book.title+'の表紙を再取得');retry.addEventListener('click',event=>{event.stopPropagation();makeThumbnail(book,container);});container.replaceChildren(retry);
 }
-async function generateThumbnail(book,container) {
- if(thumbnailCache.has(book.id)){container.append(thumbnailCache.get(book.id).cloneNode());return;}
- if(book.status!=='ready')return;
- await thumbnailSlot();
- try { const task=pdfjsLib.getDocument({...pdfOptions,url:`/api/library/${encodeURIComponent(book.id)}/file`,disableStream:true,disableAutoFetch:true,rangeChunkSize:1024*1024});
-  try {const doc=await task.promise;const page=await doc.getPage(1);const size=page.getViewport({scale:1});const viewport=page.getViewport({scale:Math.min(140/size.width,180/size.height)});const canvas=document.createElement('canvas');canvas.width=viewport.width;canvas.height=viewport.height;await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const image=document.createElement('img');image.src=canvas.toDataURL('image/jpeg',.65);image.alt='';image.loading='lazy';thumbnailCache.set(book.id,image);if(container.isConnected)container.append(image.cloneNode());}finally{await task.destroy();}
- }catch(error){console.warn('Thumbnail failed:',error);}finally{releaseThumbnail();}
+async function generateThumbnail(book) {
+ if(thumbnailCache.has(book.id))return thumbnailCache.get(book.id);
+ if(book.status!=='ready')return null;
+ await thumbnailSlot(book);
+ let task=null,timer=null;const controller=new AbortController();
+ const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();task?.destroy().catch(()=>{});reject(new Error('表紙取得が時間切れになりました。'));},30000);});
+ try {
+  const work=(async()=>{
+   const path=`/api/library/${encodeURIComponent(book.id)}/thumbnail`;
+   const cached=await fetch(path,{signal:controller.signal});
+   if(cached.ok){const blob=await cached.blob();return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
+   if(cached.status!==404)throw new Error('保存済み表紙を取得できませんでした。');
+   task=pdfjsLib.getDocument({...pdfOptions,url:`/api/library/${encodeURIComponent(book.id)}/file`,disableStream:true,disableAutoFetch:true,rangeChunkSize:256*1024});
+   const doc=await task.promise,page=await doc.getPage(1),size=page.getViewport({scale:1}),viewport=page.getViewport({scale:Math.min(140/size.width,180/size.height)});
+   const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+   await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+   const data=canvas.toDataURL('image/jpeg',.7);
+   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.7));
+   if(blob&&blob.size<=65536&&!controller.signal.aborted)await fetch(path,{method:'PUT',headers:{'Content-Type':'image/jpeg'},body:blob,signal:controller.signal}).catch(()=>{});
+   return data;
+  })();
+  const data=await Promise.race([work,timeout]);const image=document.createElement('img');image.src=data;image.alt='PDFの1ページ目';
+  thumbnailCache.set(book.id,image);if(thumbnailCache.size>200)thumbnailCache.delete(thumbnailCache.keys().next().value);return image;
+ }catch(error){console.warn('Thumbnail failed:',error);return null;}
+ finally{clearTimeout(timer);controller.abort();if(task)await task.destroy().catch(()=>{});releaseThumbnail();}
 }
 function setControls() {
   const total = pdf?.numPages || 0;
