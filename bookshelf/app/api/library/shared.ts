@@ -36,7 +36,13 @@ export function fileKey(userId: string, id: string) {
   return `${userId}/${id}.pdf`;
 }
 
+export async function readLimitedBody(request:Request,limit:number){
+ const reader=request.body?.getReader();if(!reader)return null;
+ const chunks:Uint8Array[]=[];let size=0;
+ try{while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>limit){await reader.cancel();return null;}chunks.push(part.value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}finally{reader.releaseLock();}
+}
 export function serverError(error: unknown) {
-  console.error("Library request failed:", error);
-  return failure("保存先で問題が発生しました。少し待って再度お試しください。", 503);
+ const requestId=crypto.randomUUID();
+ console.error(JSON.stringify({event:'storage_request_failed',requestId,time:new Date().toISOString(),type:error instanceof Error?error.name:'unknown'}));
+ return Response.json({error:'保存先で問題が発生しました。少し待って再度お試しください。',requestId},{status:503,headers:{'Cache-Control':'private, no-store','X-Request-ID':requestId}});
 }
