@@ -1,4 +1,4 @@
-# 保存操作barrierと退会の運用（version20候補）
+# 保存操作barrierと退会の運用（version21）
 
 ## 本番では無効
 CAPACITY_ENFORCED=false、ACCOUNT_DELETION_ENABLED=falseを維持。
@@ -31,3 +31,15 @@ R2エラー応答の後に下流commitが完了する「結果不明」の処理
 
 ## ロールバック
 本番3フラグOFFならv19 archiveへ戻しても既存データの置換は不要。ただしv19のunknown-lengthストリーム欠陥へ戻るため通常の復旧先にせず、FixedLengthStream修正を維持した互換版を作る。追加の空storage_operationsテーブルは残し、migrationを巻き戻さない。フラグ有効化後は旧版がbarrierを無視するため旧archiveへ単純に切り戻さない。
+
+## version21で追加確認・変更した事項
+保存ロック取得後に例外が起きた場合は、R2結果が不明である可能性を安全側に扱い、kindをuncertain:元操作へ変更してbarrierを残す。共有取り込みadvance内で捕捉する例外も対象。503が返っただけでは下流の完了を証明できない。通常の成功・検証エラーのreturnでは従来どおりtoken一致で解放する。保守的にDB障害等も止めるため、正式な復旧権限がないまま本番で有効化しない。解除APIや自動タイムアウトは追加していない。
+
+- ローカル実workerdで、未完了リクエストのfinally実行前にランタイムを停止し、永続D1を使って再起動。barrierが残り同一利用者409、別利用者200を確認。Sites上のworker停止・R2要求の停止保証を意味しない。
+- SQLite+模擬R2で、putのエラー後も下流Promiseが生きて遅延commitする状態を再現。退会はcommit前後とも409で待機し、Promiseをjoinして終了を証明した試験専用確認後に再開し、本体を清掃。deleted後の再出現なし。Sitesの運営権限による解除は未実施。
+- multipart作成成功→DBへのupload ID保存失敗→abort失敗を再現。DBにはIDなし、模擬ストレージには孤立multipartあり、barrierが残り退会完了にならないことを確認。試験のMap全件確認権限で孤立uploadを特定・abortしてから試験専用解除し清掃。Sitesではこの列挙権限が未確認なので、本番復旧を実装済み/検証済みと扱わない。
+- abort後DBチェックポイント障害もbarrierを残す。下流終了を確認した独立fixtureの運営確認後のみ、10024による冪等再開を試験する。
+
+## 未解決の受入条件
+[問い合わせ本文](support-inquiry-ready.md)で、worker/下流の終了確認・孤立multipart列挙/中止・対象tokenの正式解除・費用を確認する。直近再認証API、バックアップ消去期限、復元時の削除tombstone適用も正式回答待ち。
+退会完了照合は本人DB（索引/棚/共有/ジョブを含む）、本体/画像prefix、進行中multipart、barrier、バックアップ消去の各証跡を揃える。現在のdeleted状態だけで正式な消去証明を発行しない。復旧したバックアップの公開前に最新tombstone台帳を適用し、退会対象を除外・照合する。台帳の別系統保管/権限/保持期限は設計案であり、正式運用は未確定。

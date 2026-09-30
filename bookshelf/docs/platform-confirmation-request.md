@@ -34,3 +34,6 @@ URL: https://pdf-page-finder.yutaro1016.chatgpt.site/shelf
 - https://help.openai.com/en/articles/20001339-creating-and-managing-chatgpt-sites
 - https://docs.github.com/en/actions/concepts/billing-and-usage
 - https://docs.github.com/en/subscriptions-and-notifications/how-tos/managing-github-actions-notifications
+
+## version21の引継ぎ
+[送信用問い合わせ本文と正式窓口手順](support-inquiry-ready.md)、[利用者の実端末受入・提出チェックリスト](user-acceptance-checklist.md)、[異常終了と結果不明の保存操作](storage-operation-recovery.md)を追加。問い合わせは未送信。本番3フラグはOFFを維持。正式な全量バックアップ/独立復元/下流終了証明と実ブラウザー・別アカウントの受入が揃うまで販売は保留。

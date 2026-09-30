@@ -37,7 +37,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
-  let operationToken:string|null=null;
+  let operationToken:string|null=null;let operationUncertain=false;
   try {
     operationToken=await beginStorageOperation(userId,"delete");
     const book = await ownedBook(id, userId);
@@ -49,5 +49,5 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
       database().prepare("DELETE FROM books WHERE id = ? AND user_id = ?").bind(id, userId),
     ]);
     return Response.json({ ok: true });
-  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
+  } catch (error) { operationUncertain=operationToken!==null;return storageError(error); } finally {await endStorageOperation(userId,operationToken,operationUncertain);}
 }

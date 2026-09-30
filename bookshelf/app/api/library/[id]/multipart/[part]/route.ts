@@ -8,7 +8,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id, part } = await context.params;
-  let operationToken:string|null=null;
+  let operationToken:string|null=null;let operationUncertain=false;
   try {
     operationToken=await beginStorageOperation(userId,"put");
     const book = await ownedBook(id, userId);
@@ -22,5 +22,5 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const uploaded = await bucket().resumeMultipartUpload(fileKey(userId, id), String(book.upload_id))
       .uploadPart(number, expectedLengthBody(request.body,length));
     return Response.json({ partNumber: uploaded.partNumber, etag: uploaded.etag });
-  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
+  } catch (error) { operationUncertain=operationToken!==null;return storageError(error); } finally {await endStorageOperation(userId,operationToken,operationUncertain);}
 }

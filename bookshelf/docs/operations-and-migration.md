@@ -53,3 +53,6 @@ bookshelf/配下に全アプリソース・lockfile・build helperを保存。PD
 ## version20候補
 storage-operation-recovery.mdに退会/barrierの検証範囲・停止時の復旧条件を追加。空storage_operationsのschema-only追加、既存行の移行/削除なし。本番の容量/退会/barrierの3フラグはOFF。通常PDF保存とmultipartはWorkers native FixedLengthStreamを使い、R2のknown-length要件と実受信長制限を両立する。前回v19のplain stream wrapperがnative local R2で拒否されることを再現した。Nodeディスクアダプターだけでは検出できない互換性だった。Native workerd/local R2のPUT/part/短い・長い本文/abort再試行をCI追加。
 正式な本番全量export・復旧ポイント・保持期間・独立復元・自動暗号化取得・通知設定は利用ツールに引き続き公開されず未確認。platform-confirmation-request.mdの質問は未送信のまま。実ブラウザー用control-browserは利用可能一覧にないため別操作経路で代用しない。別アカウントも未準備。公式費用/通知設定を再確認したが、アカウントの実請求枠・受信設定/通知到達は未確認。定期監視・非対話公開を有効化していない。
+
+## version21の引継ぎ
+[送信用問い合わせ本文と正式窓口手順](support-inquiry-ready.md)、[利用者の実端末受入・提出チェックリスト](user-acceptance-checklist.md)、[異常終了と結果不明の保存操作](storage-operation-recovery.md)を追加。問い合わせは未送信。本番3フラグはOFFを維持。正式な全量バックアップ/独立復元/下流終了証明と実ブラウザー・別アカウントの受入が揃うまで販売は保留。

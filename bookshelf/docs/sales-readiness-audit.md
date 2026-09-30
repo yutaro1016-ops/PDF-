@@ -78,3 +78,6 @@ GitHub e9e7602以後はv18検証記録追加1コミット3350752だけで、ア�
 検証: Native workerd+local R2で旧unknown-lengthラッパー拒否を再現、FixedLengthStreamの通常/分割保存と長短本文拒否、abort再実行が合格。SQLite+模擬R2でPDF/thumbnail/import/closureを処理途中で停止して退会待機、期限切れ旧leaseと二重実行拒否、abort障害/abort後DB障害から再開、本人prefixの再出現なし、古いbarrierを自動取得しないことを確認。時計経過120秒の実機試験ではなく旧lease値を強制的に過去へ変更する試験。
 自作2000ページPDFの登録/閲覧/全ページ抽出・5ページずつ索引保存/最終ページ検索をSQLite+模擬R2で確認。24枚の自作JPEGを各ページに入れた12,360,893byte PDFは同じPDF.jsで全24ページ抽出と最初/最後の画像描画を確認（画像PDFの本番登録試験ではない）。1GiB近傍までのディスク試験も継続。
 P0は本番全量復旧・実ブラウザー/別アカウント、結果不明のR2要求/worker強制終了/孤立multipart、barrier復旧権限と運用、直近再認証、バックアップ消去期限。barrierは本番無効なので現在の公開環境で退会/旧leaseの問題が解決済みとは扱わない。販売保留継続。
+
+## version21の引継ぎ
+[送信用問い合わせ本文と正式窓口手順](support-inquiry-ready.md)、[利用者の実端末受入・提出チェックリスト](user-acceptance-checklist.md)、[異常終了と結果不明の保存操作](storage-operation-recovery.md)を追加。問い合わせは未送信。本番3フラグはOFFを維持。正式な全量バックアップ/独立復元/下流終了証明と実ブラウザー・別アカウントの受入が揃うまで販売は保留。

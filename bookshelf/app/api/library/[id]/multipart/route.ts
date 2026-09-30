@@ -9,7 +9,7 @@ export async function POST(request: Request, context: Context) {
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
-  let operationToken:string|null=null;
+  let operationToken:string|null=null;let operationUncertain=false;
   try {
     operationToken=await beginStorageOperation(userId,"post");
     const book = await ownedBook(id, userId);
@@ -44,7 +44,7 @@ export async function POST(request: Request, context: Context) {
     await database().prepare("UPDATE books SET upload_id = NULL, status = 'ready' WHERE id = ? AND user_id = ?")
       .bind(id, userId).run();
     return Response.json({ ok: true });
-  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
+  } catch (error) { operationUncertain=operationToken!==null;return storageError(error); } finally {await endStorageOperation(userId,operationToken,operationUncertain);}
 }
 
 export async function DELETE(request: Request, context: Context) {
@@ -52,7 +52,7 @@ export async function DELETE(request: Request, context: Context) {
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
-  let operationToken:string|null=null;
+  let operationToken:string|null=null;let operationUncertain=false;
   try {
     operationToken=await beginStorageOperation(userId,"delete");
     const book = await ownedBook(id, userId);
@@ -62,5 +62,5 @@ export async function DELETE(request: Request, context: Context) {
       await database().prepare("UPDATE books SET upload_id = NULL WHERE id = ? AND user_id = ?").bind(id, userId).run();
     }
     return Response.json({ ok: true });
-  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
+  } catch (error) { operationUncertain=operationToken!==null;return storageError(error); } finally {await endStorageOperation(userId,operationToken,operationUncertain);}
 }

@@ -46,7 +46,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
-  let operationToken:string|null=null;
+  let operationToken:string|null=null;let operationUncertain=false;
   try {
     operationToken=await beginStorageOperation(userId,"put");
     const book = await ownedBook(id, userId);
@@ -58,5 +58,5 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     await database().prepare("UPDATE books SET status = 'ready' WHERE id = ? AND user_id = ?")
       .bind(id, userId).run();
     return Response.json({ ok: true });
-  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
+  } catch (error) { operationUncertain=operationToken!==null;return storageError(error); } finally {await endStorageOperation(userId,operationToken,operationUncertain);}
 }

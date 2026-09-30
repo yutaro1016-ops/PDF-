@@ -18,7 +18,10 @@ export async function beginStorageOperation(user:string,kind:string,closureJob?:
  if(!result.meta.changes)throw new StorageBusyError('保存処理の完了を待っています。少し待って再試行してください。');
  return token;
 }
-export async function endStorageOperation(user:string,token:string|null){
+export async function endStorageOperation(user:string,token:string|null,uncertain=false){
+ // An error response does not prove that a downstream write cannot still commit.
+ // Keep the barrier until an operator has established that all work has ended.
+ if(token&&uncertain){await database().prepare("UPDATE storage_operations SET kind='uncertain:'||kind WHERE user_id=? AND token=?").bind(user,token).run();return;}
  if(token)await database().prepare('DELETE FROM storage_operations WHERE user_id=? AND token=?').bind(user,token).run();
 }
 export function storageError(error:unknown){return error instanceof StorageBusyError?failure(error.message,409):serverError(error);}

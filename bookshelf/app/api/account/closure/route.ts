@@ -9,7 +9,7 @@ async function view(user:string){const db=database();const counts=await db.prepa
 export async function GET(){const user=await authenticatedUser();if(!user)return failure('ログインが必要です。',401);try{return Response.json(await view(user),{headers});}catch(error){return serverError(error);}}
 export async function POST(request:Request){const user=await authenticatedUser();if(!user)return failure('ログインが必要です。',401);if(!sameOrigin(request))return failure('許可されていません。',403);
  if(!closureEnabled())return failure('退会機能は検証中のため現在は停止しています。データは削除されません。',409);
- const db=database();let lease:string|null=null;let operationToken:string|null=null;
+ const db=database();let lease:string|null=null;let operationToken:string|null=null;let operationUncertain=false;
  try{const bytes=await readLimitedBody(request,4096);if(!bytes)return failure('操作を確認できません。');const body=JSON.parse(new TextDecoder().decode(bytes));const now=Date.now(),time=new Date(now).toISOString();
  if(body.action==='prepare'){
   const nonce=crypto.randomUUID();const result=await db.prepare("INSERT INTO account_lifecycle(user_id,status,nonce_hash,nonce_expires,updated_at) VALUES(?,'active',?,?,?) ON CONFLICT(user_id) DO UPDATE SET nonce_hash=excluded.nonce_hash,nonce_expires=excluded.nonce_expires,updated_at=excluded.updated_at WHERE account_lifecycle.status='active'").bind(user,await hash(nonce),now+300000,time).run();
@@ -36,5 +36,5 @@ export async function POST(request:Request){const user=await authenticatedUser()
  const orphaned=await bucket().list({prefix:`${user}/`,limit:100});if(orphaned.objects.length){await bucket().delete(orphaned.objects.map(o=>o.key));return Response.json(await view(user),{headers});}
  await db.batch([db.prepare('DELETE FROM shelves WHERE user_id=?').bind(user),db.prepare('DELETE FROM shares WHERE user_id=?').bind(user),db.prepare('DELETE FROM import_jobs WHERE user_id=?').bind(user),db.prepare("UPDATE account_lifecycle SET status='deleted',updated_at=? WHERE user_id=? AND job_id=? AND lease_token=?").bind(time,user,body.jobId,lease)]);
  return Response.json(await view(user),{headers});
- }catch(error){if(error instanceof SyntaxError)return failure('操作の形式が不正です。');return storageError(error);}finally{try{if(lease)await db.prepare('UPDATE account_lifecycle SET lease_token=NULL,lease_until=0 WHERE user_id=? AND lease_token=?').bind(user,lease).run();}finally{await endStorageOperation(user,operationToken);}}
+ }catch(error){operationUncertain=operationToken!==null;if(error instanceof SyntaxError)return failure('操作の形式が不正です。');return storageError(error);}finally{try{if(lease)await db.prepare('UPDATE account_lifecycle SET lease_token=NULL,lease_until=0 WHERE user_id=? AND lease_token=?').bind(user,lease).run();}finally{await endStorageOperation(user,operationToken,operationUncertain);}}
 }
