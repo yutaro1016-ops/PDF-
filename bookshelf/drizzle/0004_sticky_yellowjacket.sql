@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `idx_import_jobs_active` ON `import_jobs` (`user_id`,`share_id`) WHERE "import_jobs"."status" = 'pending';
