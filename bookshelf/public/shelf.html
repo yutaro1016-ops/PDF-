@@ -7,12 +7,12 @@
   <meta name="description" content="PDFを本棚に保存し、タイトルと本文の用語を検索できます。" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>PDF本棚</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=17" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand"><span class="brand-icon" aria-hidden="true">⌕</span><span>PDF本棚</span></div>
-    <div class="header-actions"><button id="manage-sharing" type="button">共有</button><a class="signout" href="/signout-with-chatgpt?return_to=%2F">ログアウト</a><label class="open-button" for="file-input">PDFを追加</label></div>
+    <div class="header-actions"><button id="account-settings" type="button">データ管理</button><button id="manage-sharing" type="button">共有</button><a class="signout" href="/signout-with-chatgpt?return_to=%2F">ログアウト</a><label class="open-button" for="file-input">PDFを追加</label></div>
     <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden />
   </header>
   <main class="workspace">
@@ -117,6 +117,16 @@
     <h2 id="share-title">共有</h2><div id="share-content"></div><p id="share-status" role="status" aria-live="polite"></p>
     <div class="dialog-actions"><button id="share-close" type="button">閉じる</button></div>
   </dialog>
-  <script type="module" src="/app.js"></script>
+  <dialog id="data-dialog" class="design-dialog" aria-labelledby="data-title">
+    <h2 id="data-title">データ管理</h2><p id="data-usage" role="status">使用量を確認中…</p>
+    <div class="data-actions"><a class="primary-button" href="/api/account/export" download>本棚と本の設定を書き出す</a><button id="folder-backup" type="button">PDF・検索データも保存</button></div>
+    <p>設定ファイルにはPDF本体と本文検索データは含まれません。「PDF・検索データも保存」は対応ブラウザーでフォルダーへ保存します。</p>
+    <label class="dialog-field">本の設定を復元する <input id="restore-file" type="file" accept="application/json,.json" /></label>
+    <p>同じPDF IDで現在保存されている本の名前・色・タグ・所属・順序を復元します。PDFと検索データは変更しません。削除されたPDFや本棚の復旧には対応していません。</p>
+    <div id="pdf-downloads" class="share-book-list" aria-label="PDFの書き出し"></div>
+    <p>退会・データ削除の自動処理は準備中です。現在この画面からデータが削除されることはありません。</p>
+    <p id="data-status" role="status" aria-live="polite"></p><div class="dialog-actions"><button id="data-close" type="button">閉じる</button></div>
+  </dialog>
+  <script type="module" src="/app.js?v=17"></script>
 </body>
 </html>
