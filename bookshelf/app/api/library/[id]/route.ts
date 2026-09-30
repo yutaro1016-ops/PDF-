@@ -19,7 +19,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       else if (key === "bookColor" || key === "textColor") { if (value !== null && !/^#[0-9a-f]{6}$/i.test(String(value))) return failure("色が不正です。"); }
       else if (key === "bookDesign") { if (value !== null && !["simple","modern","classic","minimal"].includes(String(value))) return failure("デザインが不正です。"); }
       else if (key === "bookIcon") { if (value !== null && !["pdf","medical","star","bookmark"].includes(String(value))) return failure("アイコンが不正です。"); }
-      else if (key === "coverImage") { if (value !== null && value !== "first-page" && !(typeof value === "string" && /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value) && value.length < 200000)) return failure("表紙画像が不正です。"); }
+      else if (key === "coverImage") { if (value !== null && value !== "first-page" && value !== "none" && !(typeof value === "string" && /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value) && value.length < 200000)) return failure("表紙画像が不正です。"); }
       else if (key === "bookOrder") { if (!Number.isSafeInteger(value) || Number(value) < 0) return failure("順序が不正です。"); }
       else if (key === "tags") { if (!Array.isArray(value) || value.length > 20 || value.some(tag => typeof tag !== "string" || tag.length > 40)) return failure("タグが不正です。"); value = JSON.stringify(value); }
       else if (key === "lastOpenedAt") { value = new Date().toISOString(); }
