@@ -64,3 +64,10 @@
 .share-dialog progress { width: 100%; accent-color: #2f6078; }
 #share-status { color: #8a3434; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .share-dialog { width: calc(100% - 24px); } .header-actions { flex-wrap: wrap; } }
+
+.book-action-menu{position:fixed;z-index:1000;width:240px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow-y:auto;background:#fff;color:#172d43;border:1px solid #ccd8e0;border-radius:10px;padding:6px;box-shadow:0 10px 32px #172d4329}
+.book-action-heading{padding:8px 10px;font-size:.875rem;font-weight:600;line-height:1.5;overflow-wrap:anywhere;border-bottom:1px solid #e0e7ed;margin-bottom:4px}
+.book-action-menu button{display:block;width:100%;margin:0;border:0;background:transparent;color:#172d43;text-align:left;padding:8px 10px;border-radius:6px;font-size:.875rem;line-height:1.5;min-height:36px}
+.book-action-menu button:hover,.book-action-menu button:focus-visible{background:#edf4f8;outline:2px solid #8baabd;outline-offset:-2px}
+.book-action-menu button.danger{color:#a33333;border-top:1px solid #e0e7ed;margin-top:4px}
+@media(pointer:coarse){.book-action-menu button{min-height:44px}}
