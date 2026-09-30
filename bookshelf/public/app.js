@@ -87,14 +87,13 @@ function updateList() {
   const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(book.id); checkbox.setAttribute('aria-label',book.title+'を選択');
   checkbox.addEventListener('click', event => { event.stopPropagation(); selectBook(book,index,event); });
   const cover = document.createElement('div'); cover.className = 'book-cover';
-  if (book.coverImage && book.coverImage !== 'first-page') { const image=document.createElement('img'); image.src=book.coverImage; image.loading='lazy'; image.alt=''; cover.append(image); }
-  else if (book.coverImage === 'first-page' && shelfUi.view.value === 'cover') { const observer=new IntersectionObserver(entries=>{if(entries[0].isIntersecting){observer.disconnect();makeThumbnail(book,cover);}}, {rootMargin:'100px'}); observer.observe(cover); }
+  if (book.coverImage && !['first-page','none'].includes(book.coverImage)) { const image=document.createElement('img'); image.src=book.coverImage; image.loading='lazy'; image.alt=''; cover.append(image); }
+  else if ((!book.coverImage || book.coverImage === 'first-page') && shelfUi.view.value === 'cover') { const observer=new IntersectionObserver(entries=>{if(entries[0].isIntersecting){observer.disconnect();makeThumbnail(book,cover);}}, {rootMargin:'100px'}); observer.observe(cover); }
   const icon = document.createElement('span'); icon.className='book-icon'; icon.textContent=book.bookIcon === 'medical' ? '✚' : book.bookIcon === 'star' ? '★' : book.bookIcon === 'bookmark' ? '▮' : 'PDF';
   const title=document.createElement('span'); title.className='book-title'; title.textContent=book.title;
   const tags=document.createElement('span'); tags.className='book-tags'; tags.textContent=book.status!=='ready'?'保存未完了':book.pageCount && book.indexedPages<book.pageCount?'文字の取得は未完了':parseTags(book).join(' · ');
   const menu=document.createElement('button'); menu.type='button'; menu.className='book-menu'; menu.textContent='⋯'; menu.setAttribute('aria-label',book.title+'の操作'); menu.addEventListener('click',event=>{event.stopPropagation();bookMenu(book);});
-  const designButton=document.createElement('button');designButton.type='button';designButton.className='book-design-button';designButton.textContent='色・デザイン';designButton.setAttribute('aria-label',book.title+'の色とデザイン');designButton.addEventListener('click',event=>{event.stopPropagation();designBook(book);});
-  row.append(checkbox,cover,icon,title,tags,designButton,menu);
+  row.dataset.design=book.bookDesign||'simple';row.append(checkbox,cover,icon,title,tags,menu);
   row.addEventListener('click',event=>selectBook(book,index,event)); row.addEventListener('dblclick',()=>openBook(book));
   row.addEventListener('contextmenu',event=>{event.preventDefault();bookMenu(book);});
   let press, touchDrag=false, dragTimer;
@@ -113,12 +112,20 @@ function updateList() {
 }
 function parseTags(book) { try { return JSON.parse(book.tags || '[]'); } catch { return []; } }
 const thumbnailCache=new Map();
+const thumbnailPending=new Map();let thumbnailActive=0;const thumbnailWaiters=[];
+async function thumbnailSlot(){if(thumbnailActive>=2)await new Promise(resolve=>thumbnailWaiters.push(resolve));thumbnailActive++;}
+function releaseThumbnail(){thumbnailActive--;thumbnailWaiters.shift()?.();}
 async function makeThumbnail(book,container) {
+ if(thumbnailPending.has(book.id)){await thumbnailPending.get(book.id);if(container.isConnected&&thumbnailCache.has(book.id))container.append(thumbnailCache.get(book.id).cloneNode());return;}
+ const job=generateThumbnail(book,container);thumbnailPending.set(book.id,job);try{await job;}finally{thumbnailPending.delete(book.id);}
+}
+async function generateThumbnail(book,container) {
  if(thumbnailCache.has(book.id)){container.append(thumbnailCache.get(book.id).cloneNode());return;}
  if(book.status!=='ready')return;
+ await thumbnailSlot();
  try { const task=pdfjsLib.getDocument({...pdfOptions,url:`/api/library/${encodeURIComponent(book.id)}/file`,disableStream:true,disableAutoFetch:true,rangeChunkSize:1024*1024});
-  try {const doc=await task.promise;const page=await doc.getPage(1);const viewport=page.getViewport({scale:.25});const canvas=document.createElement('canvas');canvas.width=viewport.width;canvas.height=viewport.height;await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const image=document.createElement('img');image.src=canvas.toDataURL('image/jpeg',.65);image.alt='';image.loading='lazy';thumbnailCache.set(book.id,image);if(container.isConnected)container.append(image.cloneNode());}finally{await task.destroy();}
- }catch(error){console.warn('Thumbnail failed:',error);}
+  try {const doc=await task.promise;const page=await doc.getPage(1);const size=page.getViewport({scale:1});const viewport=page.getViewport({scale:Math.min(140/size.width,180/size.height)});const canvas=document.createElement('canvas');canvas.width=viewport.width;canvas.height=viewport.height;await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const image=document.createElement('img');image.src=canvas.toDataURL('image/jpeg',.65);image.alt='';image.loading='lazy';thumbnailCache.set(book.id,image);if(container.isConnected)container.append(image.cloneNode());}finally{await task.destroy();}
+ }catch(error){console.warn('Thumbnail failed:',error);}finally{releaseThumbnail();}
 }
 function setControls() {
   const total = pdf?.numPages || 0;
@@ -461,7 +468,7 @@ function automaticTextColor(color){const rgb=[1,3,5].map(i=>parseInt(color.slice
 function designBook(book) {
  editingBook=book;coverData=book.coverImage||null;
  $('book-design-subtitle').textContent=book.title;
- const form=$('book-design-form');form.elements.bookColor.value=book.bookColor||bookColor(book);form.elements.textColor.value=book.textColor||automaticTextColor(form.elements.bookColor.value);form.elements.bookIcon.value=book.bookIcon||'pdf';form.elements.coverType.value=book.coverImage==='first-page'?'first-page':book.coverImage?'image':'none';
+ const form=$('book-design-form');form.elements.bookColor.value=book.bookColor||bookColor(book);form.elements.textColor.value=book.textColor||automaticTextColor(form.elements.bookColor.value);form.elements.bookIcon.value=book.bookIcon||'pdf';form.elements.coverType.value=!book.coverImage||book.coverImage==='first-page'?'first-page':book.coverImage==='none'?'none':'image';
  choices($('book-design-options'),bookDesigns,book.bookDesign||'simple');
  choices($('book-color-options'),colorPresets,book.bookColor||bookColor(book));
  $('cover-upload-label').hidden=form.elements.coverType.value!=='image';form.elements.coverFile.value='';bookDialog.showModal();
@@ -474,7 +481,7 @@ $('book-design-form').elements.bookColor.addEventListener('input',event=>{const 
 $('book-design-form').elements.coverType.addEventListener('change',event=>{$('cover-upload-label').hidden=event.target.value!=='image';});
 $('book-design-form').elements.coverFile.addEventListener('change',async event=>{const file=event.target.files?.[0];if(!file)return;if(file.size>120000){toast('表紙画像は120KB以下にしてください。');event.target.value='';return;}coverData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});});
 for(const dialog of [bookDialog,shelfDialog])dialog.querySelector('.dialog-cancel').addEventListener('click',()=>dialog.close());
-$('book-design-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.target;const coverType=form.elements.coverType.value;if(coverType==='image'&&!coverData?.startsWith('data:image/')){toast('表紙画像を選択してください。');return;}try{await updateBook(editingBook,{bookColor:form.elements.bookColor.value,textColor:form.elements.textColor.value,bookDesign:picked($('book-design-options')),bookIcon:form.elements.bookIcon.value,coverImage:coverType==='none'?null:coverType==='first-page'?'first-page':coverData});bookDialog.close();toast('本のデザインを保存しました。');}catch(error){toast(error.message);}});
+$('book-design-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.target;const coverType=form.elements.coverType.value;if(coverType==='image'&&!coverData?.startsWith('data:image/')){toast('表紙画像を選択してください。');return;}try{await updateBook(editingBook,{bookColor:form.elements.bookColor.value,textColor:form.elements.textColor.value,bookDesign:picked($('book-design-options')),bookIcon:form.elements.bookIcon.value,coverImage:coverType==='none'?'none':coverType==='first-page'?'first-page':coverData});bookDialog.close();toast('本のデザインを保存しました。');}catch(error){toast(error.message);}});
 $('shelf-design-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.target;try{await updateShelf(editingShelf.id,{design:picked($('shelf-design-options')),color:form.elements.color.value,boardColor:form.elements.boardColor.value,textColor:form.elements.textColor.value});shelfDialog.close();toast('本棚のデザインを保存しました。');}catch(error){toast(error.message);}});
 async function bookMenu(book) {
  const choice=prompt(`「${book.title}」\n1 PDFを開く　2 詳細　3 本文検索　4 本棚移動　5 デザイン・色　6 名前変更　7 タグ　8 表紙画像を選択　9 削除　10 上へ　11 下へ　12 文字を再取得`,'1');
@@ -518,6 +525,23 @@ for(const separator of document.querySelectorAll('.pane-resizer')){
  separator.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();paneLayout.collapsed[key]=false;paneLayout[key]=Math.max(key==='left'?190:260,Math.min(key==='left'?600:1000,paneLayout[key]+(event.key==='ArrowRight'?20:-20)));applyPaneLayout();});
 }
 applyPaneLayout();window.addEventListener('resize',applyPaneLayout);
+const bulkDialog=$('bulk-settings-dialog'),bulkForm=$('bulk-settings-form');
+function bulkTargets(){const target=bulkForm.elements.target.value;return books.filter(book=>target==='all'||(target==='selected'?selected.has(book.id):(currentShelf==='all'||(currentShelf==='uncategorized'?!book.shelfId:book.shelfId===currentShelf))));}
+function refreshBulkCount(){$('bulk-target-count').textContent=bulkTargets().length+'冊に適用します。変更しない項目はそのまま保存されます。';}
+$('bulk-settings').addEventListener('click',()=>{bulkForm.reset();bulkForm.elements.target.value=selected.size?'selected':'shelf';bulkForm.elements.customColor.hidden=true;$('bulk-settings-status').textContent='';refreshBulkCount();bulkDialog.showModal();});
+bulkForm.elements.target.addEventListener('change',refreshBulkCount);
+bulkForm.elements.color.addEventListener('change',event=>{bulkForm.elements.customColor.hidden=event.target.value!=='custom';});
+$('bulk-cancel').addEventListener('click',()=>bulkDialog.close());
+bulkForm.addEventListener('submit',async event=>{event.preventDefault();const targets=bulkTargets(),changes={};if(!targets.length){$('bulk-settings-status').textContent='変更する本を選択してください。';return;}
+ if(bulkForm.elements.cover.value!=='keep')changes.coverImage=bulkForm.elements.cover.value;
+ if(bulkForm.elements.color.value==='custom'){changes.bookColor=bulkForm.elements.customColor.value;changes.textColor=automaticTextColor(changes.bookColor);}
+ if(bulkForm.elements.design.value!=='keep')changes.bookDesign=bulkForm.elements.design.value;
+ if(bulkForm.elements.icon.value!=='keep')changes.bookIcon=bulkForm.elements.icon.value;
+ if(!Object.keys(changes).length){$('bulk-settings-status').textContent='変更する設定を選択してください。';return;}
+ const submit=bulkForm.querySelector('[type=submit]');submit.disabled=true;let applied=0;
+ try{for(let i=0;i<targets.length;i+=100){const batch=targets.slice(i,i+100);await api('/api/library/batch',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:batch.map(book=>book.id),...changes})});batch.forEach(book=>Object.assign(book,changes));applied+=batch.length;$('bulk-settings-status').textContent=applied+'冊を保存しました。';}bulkDialog.close();updateList();toast(applied+'冊の設定を変更しました。');}
+ catch(error){updateList();$('bulk-settings-status').textContent=applied+'冊を保存済みです。残りは再実行できます。 '+error.message;}finally{submit.disabled=false;}
+});
 $('add-shelf').addEventListener('click',async()=>{const name=prompt('新しい本棚の名前');if(!name?.trim())return;try{const result=await api('/api/shelves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim()})});const data=await api('/api/shelves');shelves=data.shelves;currentShelf=result.id;renderNavigation();updateList();}catch(error){toast(error.message);}});
 shelfUi.edit.addEventListener('click',editShelf);
 shelfUi.view.addEventListener('change',updateList);shelfUi.sort.addEventListener('change',updateList);
