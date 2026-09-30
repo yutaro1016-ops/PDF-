@@ -47,3 +47,20 @@
 .shelf-books[data-mode=cover] .book-card[data-design=classic] .book-cover{border:2px solid var(--book-color);border-left-width:5px}.shelf-books[data-mode=cover] .book-card[data-design=modern] .book-cover{border-bottom:4px solid var(--book-color)}.shelf-books[data-mode=cover] .book-card[data-design=minimal] .book-cover{box-shadow:none;border:1px solid #c6d5db}
 @media(hover:none){.shelf-books[data-mode=cover] .book-card input,.shelf-books[data-mode=cover] .book-menu{opacity:1}}
 .thumbnail-status{display:grid;place-items:center;width:100%;height:100%;font-size:.7rem;text-align:center;padding:5px;background:#edf3f5;color:#355463}.thumbnail-retry{width:100%;height:100%;border:1px solid #8daeb9;border-radius:3px;padding:5px;background:#f0f7f8;color:#244b5b;font-size:.75rem;line-height:1.5}
+
+.share-dialog { max-width: 620px; }
+.share-dialog h3 { margin: 1rem 0 .5rem; }
+.share-dialog p { font-size: .9rem; line-height: 1.6; }
+.share-dialog button { margin: .25rem; }
+.share-dialog input:not([type=checkbox]), .share-dialog select { width: 100%; min-width: 0; }
+.share-dialog input[readonly] { font-size: .875rem; }
+.share-book-list { max-height: 260px; overflow-y: auto; padding: .5rem 1rem; border: 1px solid #d7e0e6; border-radius: 8px; }
+.share-book-list li { margin: .5rem 0; overflow-wrap: anywhere; }
+.share-book-choice { display: flex; align-items: center; gap: .7rem; padding: .5rem 0; font-size: .9rem; overflow-wrap: anywhere; }
+.share-book-choice input { flex: 0 0 auto; }
+.share-management { margin-top: 1.5rem; }
+.share-management-row { display: grid; gap: .4rem; padding: .8rem 0; border-top: 1px solid #d7e0e6; overflow-wrap: anywhere; }
+.share-management-row span { font-size: .875rem; }
+.share-dialog progress { width: 100%; accent-color: #2f6078; }
+#share-status { color: #8a3434; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .share-dialog { width: calc(100% - 24px); } .header-actions { flex-wrap: wrap; } }
