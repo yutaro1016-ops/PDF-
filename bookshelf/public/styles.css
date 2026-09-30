@@ -73,3 +73,16 @@
 @media(pointer:coarse){.book-action-menu button{min-height:44px}}
 .data-actions{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}.pdf-download{display:block;padding:8px 0;font-size:.875rem;overflow-wrap:anywhere}#data-dialog p{font-size:.875rem;line-height:1.6}#data-status{overflow-wrap:anywhere;color:#355463}
 @media(pointer:coarse){.book-menu,.pane-toggle{min-width:36px;min-height:36px}.shelf-actions button,.header-actions button{min-height:40px}}
+/* Keep search cards in normal flow: a crowded/zoomed sidebar must scroll,
+   never shrink the results into a tiny nested viewport. */
+.sidebar{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch}
+.sidebar> *{flex-shrink:0}
+.sidebar .document-heading{padding:16px 18px}
+.sidebar .search-block{padding:16px 18px 10px}
+.sidebar .search-results{flex:0 0 auto;height:auto;max-height:none;overflow:visible;padding:4px 14px 20px}
+.sidebar .search-results:not(:empty){min-height:12rem}
+.sidebar .result{padding:14px 16px;margin:10px 0}
+.sidebar .result-title{flex-wrap:wrap;font-size:.9375rem;line-height:1.5;overflow-wrap:anywhere}
+.sidebar .result-count{font-size:.875rem}
+.sidebar .result-snippet{font-size:.9375rem;line-height:1.7}
+@media(max-width:750px){.sidebar .document-heading{padding:12px 16px}.sidebar .search-block{padding:12px 16px 8px}}

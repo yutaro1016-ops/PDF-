@@ -7,7 +7,7 @@
   <meta name="description" content="PDFを本棚に保存し、タイトルと本文の用語を検索できます。" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>PDF本棚</title>
-  <link rel="stylesheet" href="/styles.css?v=18" />
+  <link rel="stylesheet" href="/styles.css?v=22" />
 </head>
 <body>
   <header class="topbar">
@@ -16,7 +16,7 @@
     <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden />
   </header>
   <main class="workspace">
-    <aside class="sidebar pane" aria-label="本棚と検索">
+    <aside class="sidebar pane" aria-label="本棚と検索" tabindex="0">
       <div class="pane-head"><strong>本棚・検索</strong><button class="pane-toggle" data-pane="left" type="button" aria-label="本棚・検索を閉じる">◂</button></div>
     <nav class="shelf-nav" aria-label="本棚ナビゲーション">
       <strong>本棚</strong><div id="shelf-navigation"></div>
@@ -43,7 +43,7 @@
         <div class="search-field"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="すべてのPDFから検索" autocomplete="off" /></div>
         <p id="search-status" class="supporting" role="status" aria-live="polite">用語を入力してください</p>
       </div>
-      <div id="search-results" class="search-results" aria-label="用語検索結果"></div>
+      <div id="search-results" class="search-results" role="region" aria-label="用語検索結果"></div>
       <div class="privacy-note">資料はログインした利用者の本棚に保存され、別の端末からも開けます。</div>
     </aside>
     <div class="pane-resizer" data-resize="left" role="separator" aria-orientation="vertical" aria-label="本棚・検索の幅を調整" tabindex="0"></div>
