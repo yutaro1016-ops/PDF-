@@ -1,0 +1,33 @@
+# 保存操作barrierと退会の運用（version20候補）
+
+## 本番では無効
+CAPACITY_ENFORCED=false、ACCOUNT_DELETION_ENABLED=falseを維持。
+追加のSTORAGE_OPERATION_GUARD_ENABLEDも既定false。本番の通常PDF保存の並行性を、運用受入前に変更しない。退会をtrueにすると、全R2変更入口のbarrierも必ず有効になる。独立試験でだけ有効化して検証した。
+
+## 仕組みと検証範囲
+storage_operationsに利用者ごと1行、token/kind/created_atを保存。active状態の利用者だけがINSERT OR IGNOREで原子的に取得する。退会advanceは本人のdeleting状態・job一致で取得。同じ行が残る間は409で待機する。通常PDF PUT、multipart開始/パート/完了/中止、thumbnail PUT、PDF DELETE、共有取り込みadvance/cancel、退会advanceを対象とする。R2処理と続くDB処理が終わってから、自分のtokenに一致する行だけを解放する。
+
+退会startはdeletingへ移行し新しい書込取得を拒否するが、進行中R2処理はbarrierを保持して終わらせる。退会advanceはそれまで削除しない。共有/退会の旧120秒leaseが期限切れでも、旧workerがbarrierを保持している間は引継がない。経過時間によるbarrier自動解除はない。
+
+SQLite+模擬R2で、PDF/thumbnailの書込を停止して退会開始→削除待機→書込完了→退会再開→本人prefixゼロ、共有コピー停止中のlease期限切れ→重複advance/cancel拒否→退会待機→コピー終了後停止/清掃、退会削除停止中のlease期限切れ→二重削除拒否を確認。実時間120秒待機ではなく、処理をPromiseで停止したままDBの旧lease期限を過去へ変更する決定的な試験。別利用者は独立して操作可能。
+
+multipart abortの一般障害を取消成功として握りつぶさない。成功したabortのDBチェックポイント保存失敗は再試行し、公式のNoSuchUpload(10024)だけを既に中止済みとして扱う。generic404やサービス障害は成功扱いしない。
+参考: https://developers.cloudflare.com/r2/api/error-codes/ （Workersのmessage末尾コード、10024を確認）。Sites固有のエラー発生時は実際の形の受入が必要。
+
+## 異常終了・停止時の復旧案（未実施）
+workerがfinally前に強制終了した場合やDB解放が失敗した場合、barrierが残る。安全側で停止し、時間経過だけで取り消さない。公開用の解除API・cronは追加していない。本番解除は実施していない。
+1. 影響する利用者/操作/発生時刻を権限ある担当が確認。token、ユーザーID等は公開ログ・GitHubに書かない。
+2. 正式な運営元手順で旧workerと下流R2操作の終了を確認。クライアントを閉じた、120秒経過した、ログがないだけでは終了の証明にしない。
+3. 完成PDFのhead/サイズ/hash、既知upload ID/part、DB状態、共有ジョブ、退会statusを照合。作成成功後DB失敗、結果不明のR2要求、DBへupload ID保存前の失敗を区別する。
+4. 対象tokenだけを解除する操作の影響・復旧方法を説明して承認を得る。正式なDB更新権限が未確認のため今回解除手順を実行していない。別利用者や全行を一括解除しない。
+5. 同じPDF ID/取り込みjob/退会jobで再開し、二重commitなし・他人データ不変・完了後の再出現なしを確認する。
+
+R2エラー応答の後に下流commitが完了する「結果不明」の処理、強制終了した実worker、DBに記録する前に生成された孤立multipartは、今回のローカル試験で解決保証していない。正式な操作終了確認・multipart一覧権限/fencing・障害演習なしに本番barrier/退会を有効化しない。
+有効化前は旧版のbarrier非対応requestがすべて終了したことも正式に確認する。同時に公開切替だけして即退会を開始しない。
+
+## 本人確認・完了・バックアップ
+本人ID・5分nonce・明示確認は直近再認証の証明ではない。正式step-up認証を運営元に確認する。完了はjobのdeletedだけでなく、本人DB対象、R2prefix、進行中multipart、取消済み共有、残るbarrierを照合し、本人へ記録を提示する。
+バックアップ内消去期限はSites回答待ち。旧世代を復元する際は復元後・公開前に削除tombstoneを再適用して退会データを再公開しない。保持/消去期限・法的例外・取り込み済み他人コピーが残る旨を公開方針で説明する。本人への完了通知・正式な保存期間は未確定。
+
+## ロールバック
+本番3フラグOFFならv19 archiveへ戻しても既存データの置換は不要。ただしv19のunknown-lengthストリーム欠陥へ戻るため通常の復旧先にせず、FixedLengthStream修正を維持した互換版を作る。追加の空storage_operationsテーブルは残し、migrationを巻き戻さない。フラグ有効化後は旧版がbarrierを無視するため旧archiveへ単純に切り戻さない。

@@ -1,3 +1,4 @@
+import {beginStorageOperation,endStorageOperation,storageError} from "../../../../account/storage-operation";
 import { bucket, currentUser, expectedLengthBody, failure, fileKey, ownedBook, PART_BYTES, sameOrigin, serverError } from "../../../shared";
 
 export const runtime = "edge";
@@ -7,7 +8,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id, part } = await context.params;
+  let operationToken:string|null=null;
   try {
+    operationToken=await beginStorageOperation(userId,"put");
     const book = await ownedBook(id, userId);
     if (!book || book.status !== "uploading" || !book.upload_id) return failure("保存中の資料が見つかりません。", 404);
     const number = Number(part);
@@ -19,5 +22,5 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const uploaded = await bucket().resumeMultipartUpload(fileKey(userId, id), String(book.upload_id))
       .uploadPart(number, expectedLengthBody(request.body,length));
     return Response.json({ partNumber: uploaded.partNumber, etag: uploaded.etag });
-  } catch (error) { return serverError(error); }
+  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
 }

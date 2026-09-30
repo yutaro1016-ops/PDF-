@@ -72,3 +72,9 @@ GitHub e9e7602以後はv18検証記録追加1コミット3350752だけで、ア�
 登録済みサイズ/Content-Lengthだけでなく実際に受信するストリーム長を検証する処理を、通常保存とmultipartパート保存に追加。宣言より長い/短い本文や途中切断を保存完了としない。ストリーム方式を維持し全PDFをメモリに展開しない。
 新規大型試験は自作3ページPDFに未参照データを加え、32/128/512MiB・1GiB上限未満の1,073,738,978バイトまで実API→ディスク保存→同じPDF.js Range閲覧/表紙描画→索引登録→全/指定/複数対象検索を照合。元/保存SHA256一致、8MiB/パート以下、本文抽出/表紙読み出し合計128,226バイト以下。途中パート切断・再送・保存完了後DB障害からの再試行も合格。SQLite/ディスクストレージアダプターであり、本番R2や実ブラウザーの1GB受入ではない。未参照padding中心のPDFなので、大量画像/数千ページ/スキャンPDFの負荷を代表しない。
 主要CIへ大型試験と受信ストリーム長試験を追加。本番全量バックアップ/復元と実アカウント/実ブラウザーは未確認のまま。詳細な未送信質問をplatform-confirmation-request.md、端末/画像/退会競合の受入準備をbrowser-acceptance-plan.mdに記録。退会長時間競合と古いleaseは今回解決していない。販売保留を継続する。
+
+## version19からの継続（version20候補）
+開始時公開v19/Sites f4d3923、GitHub684ece5以後の差分は検証記録4697798だけでアプリ変更なし。修正: native known-length PDFストリーム、無効ゲート付き永続barrier、一般abort失敗の伝播/NoSuchUploadだけの再試行成功扱い、空storage_operationsのDrizzle追加。既存DB/PDF/索引/棚は移行不要。本番容量/退会/barrierはOFFを維持。
+検証: Native workerd+local R2で旧unknown-lengthラッパー拒否を再現、FixedLengthStreamの通常/分割保存と長短本文拒否、abort再実行が合格。SQLite+模擬R2でPDF/thumbnail/import/closureを処理途中で停止して退会待機、期限切れ旧leaseと二重実行拒否、abort障害/abort後DB障害から再開、本人prefixの再出現なし、古いbarrierを自動取得しないことを確認。時計経過120秒の実機試験ではなく旧lease値を強制的に過去へ変更する試験。
+自作2000ページPDFの登録/閲覧/全ページ抽出・5ページずつ索引保存/最終ページ検索をSQLite+模擬R2で確認。24枚の自作JPEGを各ページに入れた12,360,893byte PDFは同じPDF.jsで全24ページ抽出と最初/最後の画像描画を確認（画像PDFの本番登録試験ではない）。1GiB近傍までのディスク試験も継続。
+P0は本番全量復旧・実ブラウザー/別アカウント、結果不明のR2要求/worker強制終了/孤立multipart、barrier復旧権限と運用、直近再認証、バックアップ消去期限。barrierは本番無効なので現在の公開環境で退会/旧leaseの問題が解決済みとは扱わない。販売保留継続。

@@ -1,3 +1,4 @@
+import {abortKnownMultipart,beginStorageOperation,endStorageOperation,storageError} from "../../../account/storage-operation";
 import { bucket, currentUser, database, failure, fileKey, ownedBook, PART_BYTES, sameOrigin, serverError } from "../../shared";
 
 export const runtime = "edge";
@@ -8,7 +9,9 @@ export async function POST(request: Request, context: Context) {
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
+  let operationToken:string|null=null;
   try {
+    operationToken=await beginStorageOperation(userId,"post");
     const book = await ownedBook(id, userId);
     if (!book) return failure("資料が見つかりません。", 404);
     const payload = await request.json() as { parts?: Array<{ partNumber: number; etag: string }> };
@@ -41,7 +44,7 @@ export async function POST(request: Request, context: Context) {
     await database().prepare("UPDATE books SET upload_id = NULL, status = 'ready' WHERE id = ? AND user_id = ?")
       .bind(id, userId).run();
     return Response.json({ ok: true });
-  } catch (error) { return serverError(error); }
+  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
 }
 
 export async function DELETE(request: Request, context: Context) {
@@ -49,13 +52,15 @@ export async function DELETE(request: Request, context: Context) {
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
+  let operationToken:string|null=null;
   try {
+    operationToken=await beginStorageOperation(userId,"delete");
     const book = await ownedBook(id, userId);
     if (!book) return failure("資料が見つかりません。", 404);
     if (book.upload_id) {
-      await bucket().resumeMultipartUpload(fileKey(userId, id), String(book.upload_id)).abort();
+      await abortKnownMultipart(bucket(),fileKey(userId,id),String(book.upload_id));
       await database().prepare("UPDATE books SET upload_id = NULL WHERE id = ? AND user_id = ?").bind(id, userId).run();
     }
     return Response.json({ ok: true });
-  } catch (error) { return serverError(error); }
+  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
 }

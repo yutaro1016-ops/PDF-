@@ -1,3 +1,4 @@
+import {abortKnownMultipart,beginStorageOperation,endStorageOperation,storageError} from "../../account/storage-operation";
 import { bucket, currentUser, database, failure, fileKey, ownedBook, sameOrigin, serverError } from "../shared";
 
 export const runtime = "edge";
@@ -36,15 +37,17 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
+  let operationToken:string|null=null;
   try {
+    operationToken=await beginStorageOperation(userId,"delete");
     const book = await ownedBook(id, userId);
     if (!book) return failure("資料が見つかりません。", 404);
-    if (book.upload_id) await bucket().resumeMultipartUpload(fileKey(userId, id), String(book.upload_id)).abort();
+    if (book.upload_id) await abortKnownMultipart(bucket(),fileKey(userId,id),String(book.upload_id));
     await bucket().delete([fileKey(userId, id), `${userId}/${id}.thumbnail.jpg`]);
     await database().batch([
       database().prepare("DELETE FROM pages WHERE book_id = ?").bind(id),
       database().prepare("DELETE FROM books WHERE id = ? AND user_id = ?").bind(id, userId),
     ]);
     return Response.json({ ok: true });
-  } catch (error) { return serverError(error); }
+  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
 }

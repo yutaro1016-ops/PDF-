@@ -1,3 +1,4 @@
+import {abortKnownMultipart} from '../account/storage-operation';
 import { bucket, database, fileKey, PART_BYTES } from '../library/shared';
 export type Row = Record<string, any>;
 export async function tokenHash(token: string) {
@@ -68,7 +69,7 @@ export async function cancelJob(job: Row) {
   const {results}=await db.prepare("SELECT * FROM import_items WHERE job_id=? AND status!='done'").bind(job.id).all<Row>();
   for(const item of results){
     const key=fileKey(job.user_id,item.target_id);
-    if(item.upload_id && !await store.head(key)){try{await store.resumeMultipartUpload(key,item.upload_id).abort();}catch(error){console.warn('Import abort failed',error);}}
+    if(item.upload_id && !await store.head(key)){await abortKnownMultipart(store,key,item.upload_id);await db.prepare('UPDATE import_items SET upload_id=NULL WHERE job_id=? AND source_id=?').bind(job.id,item.source_id).run();}
     await store.delete([key,`${job.user_id}/${item.target_id}.thumbnail.jpg`]);
     await db.batch([db.prepare('DELETE FROM pages WHERE book_id=?').bind(item.target_id),db.prepare("DELETE FROM books WHERE id=? AND user_id=? AND status='importing'").bind(item.target_id,job.user_id)]);
   }

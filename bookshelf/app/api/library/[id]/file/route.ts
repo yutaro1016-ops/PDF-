@@ -1,3 +1,4 @@
+import {beginStorageOperation,endStorageOperation,storageError} from "../../../account/storage-operation";
 import { bucket, currentUser, database, expectedLengthBody, failure, fileKey, PART_BYTES, ownedBook, sameOrigin, serverError } from "../../shared";
 
 export const runtime = "edge";
@@ -45,7 +46,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!userId) return failure("ログインが必要です。", 401);
   if (!sameOrigin(request)) return failure("この操作は許可されていません。", 403);
   const { id } = await context.params;
+  let operationToken:string|null=null;
   try {
+    operationToken=await beginStorageOperation(userId,"put");
     const book = await ownedBook(id, userId);
     if (!book) return failure("資料が見つかりません。", 404);
     if (book.status !== "uploading") return failure("すでに保存済みです。", 409);
@@ -55,5 +58,5 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     await database().prepare("UPDATE books SET status = 'ready' WHERE id = ? AND user_id = ?")
       .bind(id, userId).run();
     return Response.json({ ok: true });
-  } catch (error) { return serverError(error); }
+  } catch (error) { return storageError(error); } finally {await endStorageOperation(userId,operationToken);}
 }

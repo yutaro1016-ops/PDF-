@@ -1,3 +1,4 @@
+import {beginStorageOperation,endStorageOperation,storageError} from "../../../account/storage-operation";
 import {currentUser,database,failure,sameOrigin,serverError} from '../../../library/shared';
 import {advanceItem,cancelJob,jobView,Row} from '../../shared';
 export const runtime='edge';
@@ -5,8 +6,9 @@ type Context={params:Promise<{id:string}>};
 export async function GET(_request:Request,context:Context){const user=await currentUser();if(!user)return failure('ログインが必要です。',401);try{const {id}=await context.params,job=await jobView(id,user);return job?Response.json({job},{headers:{'Cache-Control':'private, no-store'}}):failure('取り込みが見つかりません。',404);}catch(error){return serverError(error);}}
 async function operate(request:Request,context:Context,cancel:boolean){
   const user=await currentUser();if(!user)return failure('ログインが必要です。',401);if(!sameOrigin(request))return failure('許可されていません。',403);
-  const {id}=await context.params,db=database(),lease=crypto.randomUUID();let locked=false;
+  const {id}=await context.params,db=database(),lease=crypto.randomUUID();let locked=false;let operationToken:string|null=null;
   try{
+    operationToken=await beginStorageOperation(user,"import");
     const job=await db.prepare('SELECT * FROM import_jobs WHERE id=? AND user_id=?').bind(id,user).first<Row>();if(!job)return failure('取り込みが見つかりません。',404);
     if(job.status!=='pending')return Response.json({job:await jobView(id,user)});
     const lock=await db.prepare("UPDATE import_jobs SET lease_token=?,lease_until=? WHERE id=? AND user_id=? AND status='pending' AND lease_until<?").bind(lease,Date.now()+120000,id,user,Date.now()).run();
@@ -26,7 +28,7 @@ async function operate(request:Request,context:Context,cancel:boolean){
     const remaining=await db.prepare("SELECT COUNT(*) AS n FROM import_items WHERE job_id=? AND status!='done'").bind(id).first<{n:number}>();
     await db.prepare('UPDATE import_jobs SET status=?,updated_at=? WHERE id=?').bind(remaining?.n?'pending':'done',new Date().toISOString(),id).run();
     return Response.json({job:await jobView(id,user)});
-  }catch(error){return serverError(error);}finally{if(locked)await db.prepare('UPDATE import_jobs SET lease_until=0,lease_token=NULL WHERE id=? AND lease_token=?').bind(id,lease).run();}
+  }catch(error){return storageError(error);}finally{try{if(locked)await db.prepare('UPDATE import_jobs SET lease_until=0,lease_token=NULL WHERE id=? AND lease_token=?').bind(id,lease).run();}finally{await endStorageOperation(user,operationToken);}}
 }
 export async function POST(request:Request,context:Context){return operate(request,context,false);}
 export async function DELETE(request:Request,context:Context){return operate(request,context,true);}

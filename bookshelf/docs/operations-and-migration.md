@@ -49,3 +49,7 @@ bookshelf/配下に全アプリソース・lockfile・build helperを保存。PD
 正式な本番全量export/recoveryポイント/保持期間/サービス資格情報は引き続き確認できず、独立した本番全量復元・自動暗号化取得は実行していない。運営元への質問と必要権限、監視通知の受信手順/費用条件はplatform-confirmation-request.mdを参照。問い合わせ送信、外部契約、cron有効化、自動公開設定、環境切替は行っていない。
 本番退会/容量制限はOFFのまま。退会競合・本人再認証・バックアップ内消去はbrowser-acceptance-plan.mdの受入条件を満たすまで有効化禁止。新たなPDF受信ストリーム長チェックは既存PDF/DB設定の移行を伴わない。コードのロールバックはv18 archiveへの再デプロイで、DB/R2の置換は不要。
 大型ローカル試験: NODE_PATH=<canvas-tools>/node_modules node tests/large_pdf_test.mjs。既定は32,128,512,1024MiB。LARGE_PDF_MIBで段階を指定。入力/パート/完成ファイルは専用一時ディレクトリのみで、通常終了時に清掃する。強制終了した場合のpdf-large-*残存は自作テストデータだけだが、所在・生成者を確認せず汎用rmを実行しない。患者資料や既存PDFを使用しない。本番登録の負荷試験は運用枠・費用確認後に専用テストアカウントで実施する。
+
+## version20候補
+storage-operation-recovery.mdに退会/barrierの検証範囲・停止時の復旧条件を追加。空storage_operationsのschema-only追加、既存行の移行/削除なし。本番の容量/退会/barrierの3フラグはOFF。通常PDF保存とmultipartはWorkers native FixedLengthStreamを使い、R2のknown-length要件と実受信長制限を両立する。前回v19のplain stream wrapperがnative local R2で拒否されることを再現した。Nodeディスクアダプターだけでは検出できない互換性だった。Native workerd/local R2のPUT/part/短い・長い本文/abort再試行をCI追加。
+正式な本番全量export・復旧ポイント・保持期間・独立復元・自動暗号化取得・通知設定は利用ツールに引き続き公開されず未確認。platform-confirmation-request.mdの質問は未送信のまま。実ブラウザー用control-browserは利用可能一覧にないため別操作経路で代用しない。別アカウントも未準備。公式費用/通知設定を再確認したが、アカウントの実請求枠・受信設定/通知到達は未確認。定期監視・非対話公開を有効化していない。

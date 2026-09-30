@@ -26,3 +26,20 @@ export async function writePDF(destination,padding=0){
   return offset;
  }finally{await handle.close();}
 }
+
+// Self-authored text pages, optionally with self-generated JPEGs on each page.
+export function makePagedPDF(count,images=[]){
+ if(!Number.isInteger(count)||count<1||count>20000)throw new RangeError('Invalid pages');
+ const objects=['<< /Type /Catalog /Pages 2 0 R >>','', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],kids=[];
+ for(let page=1;page<=count;page++){
+  const id=objects.length+1,jpeg=images.length?images[(page-1)%images.length]:null;kids.push(`${id} 0 R`);
+  objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 3 0 R >> ${jpeg?`/XObject << /Im0 ${id+2} 0 R >>`:''} >> /Contents ${id+1} 0 R >>`);
+  const content=`BT /F1 18 Tf 40 740 Td (STUDY-PAGE-${String(page).padStart(5,'0')}) Tj ET`+(jpeg?'\nq 520 0 0 520 40 100 cm /Im0 Do Q':'');
+  objects.push(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
+  if(jpeg)objects.push(Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width 768 /Height 768 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`),jpeg,Buffer.from('\nendstream')]));
+ }
+ objects[1]=`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${count} >>`;
+ const chunks=[Buffer.from('%PDF-1.7\n')],offsets=[];let offset=chunks[0].length;
+ objects.forEach((object,i)=>{offsets.push(offset);const chunk=Buffer.concat([Buffer.from(`${i+1} 0 obj\n`),Buffer.from(object),Buffer.from('\nendobj\n')]);chunks.push(chunk);offset+=chunk.length;});
+ chunks.push(Buffer.from(`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`+offsets.map(value=>String(value).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${offset}\n%%EOF\n`));return new Uint8Array(Buffer.concat(chunks));
+}

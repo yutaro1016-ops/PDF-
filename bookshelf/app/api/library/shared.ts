@@ -47,6 +47,8 @@ export async function readLimitedBody(request:Request,limit:number){
 // Validate actual streamed bytes, not only the caller's Content-Length.
 // At most one source chunk is held; an incomplete part remains retryable.
 export function expectedLengthBody(body:ReadableStream<Uint8Array>,expected:number){
+ // R2 requires a known-length stream. A plain JS wrapper loses that property.
+ if(typeof FixedLengthStream!=='undefined')return body.pipeThrough(new FixedLengthStream(expected));
  const reader=body.getReader();let received=0,released=false;
  const release=()=>{if(!released){released=true;reader.releaseLock();}};
  return new ReadableStream<Uint8Array>({

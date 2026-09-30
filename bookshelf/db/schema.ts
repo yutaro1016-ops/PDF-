@@ -81,3 +81,9 @@ export const accountLifecycle = sqliteTable('account_lifecycle', {
   jobId: text('job_id'), leaseToken: text('lease_token'), leaseUntil: integer('lease_until').notNull().default(0),
   updatedAt: text('updated_at').notNull(),
 });
+
+// One active R2 mutation per account; intentionally has no expiration takeover.
+export const storageOperations = sqliteTable('storage_operations', {
+ userId:text('user_id').primaryKey(),token:text('token').notNull(),
+ kind:text('kind').notNull(),createdAt:text('created_at').notNull(),
+});
