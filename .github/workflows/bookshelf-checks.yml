@@ -22,3 +22,4 @@ jobs:
       - run: node bookshelf/tests/sharing_test.mjs
         env:
           NODE_PATH: /tmp/sharing-test-tools/node_modules
+      - run: python3 bookshelf/tests/backup_restore_test.py
