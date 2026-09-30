@@ -1,4 +1,5 @@
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const books = sqliteTable("books", {
   id: text("id").primaryKey(),
@@ -42,3 +43,33 @@ export const pages = sqliteTable("pages", {
   body: text("body").notNull(),
   normalized: text("normalized").notNull(),
 }, (table) => [primaryKey({ columns: [table.bookId, table.pageNumber] })]);
+
+export const shares = sqliteTable('shares', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull(),
+  shelfJson: text('shelf_json'),
+  createdAt: text('created_at').notNull(),
+  expiresAt: text('expires_at'),
+  revokedAt: text('revoked_at'),
+}, table => [index('idx_shares_owner').on(table.userId, table.createdAt), index('idx_shares_token').on(table.tokenHash)]);
+export const shareBooks = sqliteTable('share_books', {
+  shareId: text('share_id').notNull().references(() => shares.id, {onDelete:'cascade'}),
+  bookId: text('book_id').notNull(),
+  position: integer('position').notNull(),
+}, table => [primaryKey({columns:[table.shareId,table.bookId]})]);
+export const importJobs = sqliteTable('import_jobs', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(), shareId: text('share_id').notNull(),
+  shelfId: text('shelf_id'), status: text('status').notNull().default('pending'),
+  leaseToken: text('lease_token'), leaseUntil: integer('lease_until').notNull().default(0),
+  createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, table => [index('idx_import_jobs_owner_share').on(table.userId,table.shareId), uniqueIndex('idx_import_jobs_active').on(table.userId,table.shareId).where(sql`${table.status} = 'pending'`)]);
+export const importItems = sqliteTable('import_items', {
+  jobId: text('job_id').notNull().references(() => importJobs.id, {onDelete:'cascade'}),
+  sourceId: text('source_id').notNull(), targetId: text('target_id').notNull(), position: integer('position').notNull(),
+  metadata: text('metadata').notNull(), status: text('status').notNull().default('pending'),
+  uploadId: text('upload_id'), parts: text('parts').notNull().default('[]'),
+  pageCursor: integer('page_cursor').notNull().default(0),
+}, table => [primaryKey({columns:[table.jobId,table.sourceId]})]);
