@@ -52,7 +52,7 @@ function updateScopeOptions() {
 async function api(path, options) {
   const response = await fetch(path, options);
   const result = await response.json();
-  if (!response.ok) {const error=new Error(result.error || '操作を完了できませんでした。');error.status=response.status;throw error;}
+  if (!response.ok) {const error=new Error(result.error || '操作を完了できませんでした。');error.status=response.status;if(result.requestId)error.message+='（問い合わせ番号：'+result.requestId+'）';throw error;}
   return result;
 }
 let shelves = [], currentShelf = 'all', selected = new Set(), anchorIndex = -1, visibleLimit = 80;
@@ -88,7 +88,7 @@ function updateList() {
   const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(book.id); checkbox.setAttribute('aria-label',book.title+'を選択');
   checkbox.addEventListener('click', event => { event.stopPropagation(); selectBook(book,index,event); });
   const cover = document.createElement('div'); cover.className = 'book-cover';
-  if (book.coverImage && !['first-page','none'].includes(book.coverImage)) { const image=document.createElement('img'); image.src=book.coverImage; image.loading='lazy'; image.alt=''; cover.append(image); }
+  if (book.coverImage && !['first-page','none'].includes(book.coverImage)) { const image=document.createElement('img'); image.src=book.coverImage==='custom'?'/api/library/'+book.id+'/cover':book.coverImage; image.loading='lazy'; image.alt=''; cover.append(image); }
   else if ((!book.coverImage || book.coverImage === 'first-page') && shelfUi.view.value === 'cover') { if('IntersectionObserver' in window){const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();makeThumbnail(book,cover);}}, {rootMargin:'100px'});observer.observe(cover);}else setTimeout(()=>makeThumbnail(book,cover),0); }
   const icon = document.createElement('span'); icon.className='book-icon'; icon.textContent=book.bookIcon === 'medical' ? '✚' : book.bookIcon === 'star' ? '★' : book.bookIcon === 'bookmark' ? '▮' : 'PDF';
   const title=document.createElement('span'); title.className='book-title'; title.textContent=book.title;
@@ -389,7 +389,7 @@ async function searchTerm() {
   try {
     const params = new URLSearchParams({ q: query });
     if (selectedBookIds) for (const bookId of selectedBookIds) params.append('book', bookId);
-    const response = await api(`/api/search?${params}`);
+    const response = await api('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({q:query,books:selectedBookIds?[...selectedBookIds]:[]})});
     if (id !== searchId) return;
     searchHits = response.results; ui.results.replaceChildren();
     let total = 0;
@@ -490,8 +490,8 @@ function choices(container, options, selected) {
 }
 function picked(container) {return container.querySelector('.active')?.dataset.value;}
 function automaticTextColor(color){const rgb=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>.35?'#172d43':'#ffffff';}
-function designBook(book) {
- editingBook=book;coverData=book.coverImage||null;
+async function designBook(book) {
+ editingBook=book;coverData=book.coverImage==='custom'?(await api('/api/library/'+book.id+'/cover?metadata=1')).image:book.coverImage||null;
  $('book-design-subtitle').textContent=book.title;
  const form=$('book-design-form');form.elements.bookColor.value=book.bookColor||bookColor(book);form.elements.textColor.value=book.textColor||automaticTextColor(form.elements.bookColor.value);form.elements.bookIcon.value=book.bookIcon||'pdf';form.elements.coverType.value=!book.coverImage||book.coverImage==='first-page'?'first-page':book.coverImage==='none'?'none':'image';
  choices($('book-design-options'),bookDesigns,book.bookDesign||'simple');
@@ -705,3 +705,35 @@ async function runImport(){
  catch(error){shareError(error);}
  finally{runningImport=false;if(shareDialog.open)renderImportProgress();}
 }
+
+const dataDialog=$('data-dialog');let backingUp=false;
+$('data-close').addEventListener('click',()=>dataDialog.close());
+$('account-settings').addEventListener('click',async()=>{if(!dataDialog.open)dataDialog.showModal();$('folder-backup').disabled=backingUp||!window.showDirectoryPicker;$('data-status').textContent=window.showDirectoryPicker?'':'このブラウザーではフォルダー保存を利用できません。設定と下のPDFを個別に保存してください。';
+ const list=$('pdf-downloads');list.replaceChildren();for(const book of books.filter(b=>b.status==='ready')){const link=document.createElement('a');link.href='/api/library/'+book.id+'/file?download=1';link.download=book.fileName;link.textContent=book.title+'（PDFを保存）';link.className='pdf-download';list.append(link);}
+ try{const data=await api('/api/account/usage');$('data-usage').textContent=`PDF ${data.usage.count}冊 · ${(data.usage.bytes/1000000000).toFixed(2)} GB、取り込み予約 ${(data.reservedBytes/1000000000).toFixed(2)} GB。販売時の容量案は5GBです（現在は制限していません）。`;}catch(error){$('data-usage').textContent=error.message;}
+});
+$('folder-backup').addEventListener('click',async()=>{
+ if(backingUp)return;let root;try{root=await window.showDirectoryPicker({mode:'readwrite'});}catch{return;}
+ backingUp=true;$('folder-backup').disabled=true;
+ try{const directory=await root.getDirectoryHandle('PDF-Backup-'+new Date().toISOString().replace(/[:.]/g,'-'),{create:true}),backup=await api('/api/account/export');
+ async function write(name,content){const handle=await directory.getFileHandle(name,{create:true}),writer=await handle.createWritable();try{await writer.write(content);await writer.close();}catch(error){await writer.abort();throw error;}}
+ await write('metadata.json',JSON.stringify(backup));let count=0;
+ for(const book of backup.books.filter(book=>book.status==='ready')){
+  $('data-status').textContent=`${count}冊を保存済み：${book.title}を保存中…`;
+  const response=await fetch('/api/library/'+book.id+'/file');if(!response.ok||!response.body)throw Error('PDFを保存できません。');const handle=await directory.getFileHandle(book.id+'.pdf',{create:true}),writer=await handle.createWritable();await response.body.pipeTo(writer);
+  const indexHandle=await directory.getFileHandle(book.id+'.pages.ndjson',{create:true}),indexWriter=await indexHandle.createWritable();try{let after=0,more=true;while(more){const part=await api('/api/library/'+book.id+'/export-pages?after='+after);for(const page of part.pages)await indexWriter.write(JSON.stringify(page)+'\n');after=part.next;more=part.hasMore;}await indexWriter.close();}catch(error){await indexWriter.abort();throw error;}count++;
+ }
+ await write('COMPLETE.json',JSON.stringify({format:'pdf-page-finder-backup',version:1,complete:true,pdfCount:count,completedAt:new Date().toISOString()}));$('data-status').textContent=`${count}冊のPDF・設定・検索データを保存しました。保存中に変更した資料がある場合は再度書き出してください。`;
+ }catch(error){$('data-status').textContent='保存は未完了です。作成済みのファイルは残ります。 '+error.message;}finally{backingUp=false;$('folder-backup').disabled=false;}
+});
+$('restore-file').addEventListener('change',async event=>{
+ const file=event.target.files?.[0];if(!file)return;
+ try{if(file.size>20000000)throw Error('設定ファイルは20MB以下にしてください。');const backup=JSON.parse(await file.text());if(backup.format!=='pdf-page-finder-backup'||backup.version!==1||!Array.isArray(backup.books))throw Error('このアプリの設定ファイルを選択してください。');
+ const known=new Map(books.map(book=>[book.id,book])),targets=backup.books.filter(book=>known.has(book.id));if(!targets.length)throw Error('同じPDF IDの本がありません。PDFを復旧する機能ではありません。');
+ const makeBody=(part,apply)=>JSON.stringify({format:backup.format,version:backup.version,books:part,apply});
+ let matched=0;for(let i=0;i<targets.length;i+=20){const result=await api('/api/account/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(targets.slice(i,i+20),false)});matched+=result.matched;}
+ if(!confirm(`${matched}冊の本の設定を復元しますか？現在の名前・色・タグ・所属・順序が設定ファイルの内容に戻ります。PDFと本文検索データは変更しません。削除された本棚への所属は未分類になります。`))return;
+ let applied=0;for(let i=0;i<targets.length;i+=20){const result=await api('/api/account/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(targets.slice(i,i+20),true)});applied+=result.matched;$('data-status').textContent=applied+'冊を復元済み。';}
+ await loadLibrary();$('data-status').textContent=applied+'冊の設定を復元しました。';
+ }catch(error){$('data-status').textContent=error.message+' 処理途中で失敗した場合は、同じファイルで再実行できます。';}finally{event.target.value='';}
+});
