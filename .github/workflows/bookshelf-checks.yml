@@ -17,3 +17,4 @@ jobs:
       - run: python3 bookshelf/tests/migration_test.py
       - run: node --check bookshelf/public/app.js
       - run: node bookshelf/tests/color_presets_test.mjs
+      - run: node bookshelf/tests/thumbnail_test.mjs
