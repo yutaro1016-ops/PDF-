@@ -7,12 +7,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!userId) return failure("ログインが必要です。", 401);
   const { id } = await context.params;
   try {
-    if (!await ownedBook(id, userId)) return failure("資料が見つかりません。", 404);
+    const book=await ownedBook(id,userId);
+    if (!book) return failure("資料が見つかりません。", 404);
     const key = fileKey(userId, id);
     const metadata = await bucket().head(key);
     if (!metadata) return failure("PDFが見つかりません。", 404);
     const headers = new Headers({ "Content-Type": "application/pdf", "Accept-Ranges": "bytes",
       "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
+    if(new URL(request.url).searchParams.get('download')==='1')headers.set('Content-Disposition',`attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(String(book.file_name))}`);
     const range = request.headers.get("range");
     if (range) {
       const match = /^bytes=(\d+)-(\d*)$/.exec(range);
