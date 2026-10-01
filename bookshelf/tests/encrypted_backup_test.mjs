@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,readFile,readdir,rm,chmod} from 'node:fs/promises';
+import {mkdtemp,writeFile,readFile,readdir,rm,chmod,truncate} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import path from 'node:path';
 import {transform} from '../scripts/encrypted-backup.mjs';
 const root=await mkdtemp(path.join(tmpdir(),'pdf-encryption-fixture-'));
@@ -15,6 +15,13 @@ try{
   await assert.rejects(()=>transform('decrypt',enc,key,out+'.bad'));assert(!(await readdir(root)).includes(path.basename(out+'.bad')));
  }
  assert(!(await readdir(root)).some(x=>x.startsWith('.pdf-backup-')));
+ // A concurrent truncation used to silently produce a valid encrypted short file.
+ const changing=path.join(root,'changing'),changingOut=changing+'.enc';await writeFile(changing,'');await truncate(changing,256*1024*1024);
+ const outcome=transform('encrypt',changing,key,changingOut).then(()=>null,error=>error);
+ let started=false;
+ for(let i=0;i<1000;i++){if((await readdir(root)).some(x=>x.startsWith('.pdf-backup-'))){started=true;break;}await new Promise(resolve=>setTimeout(resolve,1));}
+ assert(started);await truncate(changing,0);assert(await outcome instanceof Error);
+ assert(!(await readdir(root)).includes(path.basename(changingOut)));assert(!(await readdir(root)).some(x=>x.startsWith('.pdf-backup-')));
  const truncated=path.join(root,'truncated');await writeFile(truncated,Buffer.from('PPFBENC1'));
  await assert.rejects(()=>transform('decrypt',truncated,key,truncated+'.out'));
  await chmod(key,0o644);await assert.rejects(()=>transform('encrypt',path.join(root,'src31'),key,path.join(root,'refused')));

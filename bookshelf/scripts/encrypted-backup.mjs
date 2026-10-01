@@ -6,6 +6,7 @@ import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import {createReadStream,createWriteStream} from 'node:fs';
 import {open,lstat,link,unlink} from 'node:fs/promises';
 import {pipeline} from 'node:stream/promises';
+import {Transform} from 'node:stream';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 const MAGIC=Buffer.from('PPFBENC1'),HEADER_BYTES=20,TAG_BYTES=16;
@@ -34,7 +35,11 @@ export async function transform(action,source,keyPath,destination){
     try{if(action==='encrypt')await out.write(header);}finally{await out.close();}
     // Empty files still run cipher.final() through the empty readable stream.
     const input=end>=start?createReadStream(source,{start,end,highWaterMark:8*1024*1024}):createReadStream(source,{start:st.size});
-    await pipeline(input,cipher,createWriteStream(temporary,{flags:'a',highWaterMark:8*1024*1024}));
+    const expected=end>=start?end-start+1:0;let received=0;
+    const lengthGate=new Transform({transform(chunk,encoding,done){received+=chunk.length;done(null,chunk);},final(done){done(received===expected?undefined:Error('Source length changed'));}});
+    await pipeline(input,lengthGate,cipher,createWriteStream(temporary,{flags:'a',highWaterMark:8*1024*1024}));
+    const after=await regular(source);
+    if(['dev','ino','size','mtimeMs','ctimeMs'].some(field=>after[field]!==st[field]))throw Error('Source changed during encryption/decryption');
     {const file=await open(temporary,'a');try{if(action==='encrypt')await file.write(cipher.getAuthTag());await file.sync();}finally{await file.close();}}
     // Hard-link publish fails if destination already exists; never overwrites it.
     await link(temporary,destination);await unlink(temporary);created=false;

@@ -12,7 +12,7 @@ def begin(db,owner,pdf):
     token=str(uuid.uuid4())
     with db:
         if db.execute('SELECT blocked FROM owners WHERE id=?',(owner,)).fetchone()!=(0,):raise ValueError('Owner blocked or unknown')
-        db.execute('INSERT INTO candidates VALUES(?,?,?,NULL) ON CONFLICT(owner,pdf) DO UPDATE SET token=excluded.token,visible_key=NULL',(owner,pdf,token))
+        db.execute('INSERT INTO candidates VALUES(?,?,?,NULL) ON CONFLICT(owner,pdf) DO UPDATE SET token=excluded.token',(owner,pdf,token))
     return token
 
 def commit(db,owner,pdf,token):
@@ -23,7 +23,7 @@ def commit(db,owner,pdf,token):
 
 def block(db,owner):
     with db:
-        db.execute('UPDATE owners SET blocked=1 WHERE id=?',(owner,))
+        db.execute('INSERT INTO owners VALUES(?,1) ON CONFLICT(id) DO UPDATE SET blocked=1',(owner,))
         db.execute('UPDATE candidates SET visible_key=NULL WHERE owner=?',(owner,))
 
 def restore_exclusions(db,latest_deleted_owners):

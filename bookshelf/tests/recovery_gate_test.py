@@ -4,6 +4,15 @@ def load(name,path):
     spec=importlib.util.spec_from_file_location(name,ROOT/path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 model=load('generation','migration/generation-model.py');gate=load('gate','scripts/recovery-gate.py')
 class RecoveryTest(unittest.TestCase):
+    def test_pending_update_preserves_previous_and_absent_owner_stays_blocked(self):
+        db=sqlite3.connect(':memory:');model.initialize(db);db.execute("INSERT INTO owners VALUES('a',0)");db.commit()
+        token=model.begin(db,'a','pdf');model.commit(db,'a','pdf',token)
+        model.begin(db,'a','pdf')
+        self.assertEqual(db.execute('SELECT visible_key FROM candidates').fetchone()[0],token)
+        model.restore_exclusions(db,['not-yet-restored'])
+        with self.assertRaises(ValueError):model.begin(db,'not-yet-restored','pdf')
+        self.assertEqual(db.execute("SELECT blocked FROM owners WHERE id='not-yet-restored'").fetchone()[0],1)
+        db.close()
     def test_old_completion_and_deletion_cannot_republish(self):
         db=sqlite3.connect(':memory:');model.initialize(db);db.execute("INSERT INTO owners VALUES('a',0)");db.commit()
         old=model.begin(db,'a','pdf');new=model.begin(db,'a','pdf')

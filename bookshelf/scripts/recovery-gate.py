@@ -5,6 +5,8 @@ Input is a trusted operator's evidence projection; not proof of a full productio
 import datetime,json,sys
 
 def evaluate(value,now=None):
+    if not isinstance(value,dict) or type(value.get('version')) is not int:
+        raise ValueError('Evidence must be a versioned object')
     if value.get('format')!='pdf-page-finder-recovery-evidence' or value.get('version')!=1:
         raise ValueError('Unsupported recovery evidence')
     required={'format','version','backupCompletedAt','hashAudit','deletionLedgerCurrent','ownershipMappingComplete','unknownStorageOperations','orphanMultipart','restoreExcludedOwners'}
