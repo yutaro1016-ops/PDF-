@@ -97,6 +97,27 @@ try{
  const indexDownload=load(path.join(root,'app/api/library/[id]/export-index/route.ts'));
  assert((await (await indexDownload.GET(new Request('https://test.example/index'),context({id:copied}))).text()).includes('本文の検索語'));
  assert.equal((await indexDownload.GET(new Request('https://test.example/index'),context({id:first}))).status,404);
+ // Direct personal endpoints never inherit a share-preview permission.
+ const thumbnailRoute=load(path.join(root,'app/api/library/[id]/thumbnail/route.ts'));
+ const shelvesList=load(path.join(root,'app/api/shelves/route.ts'));
+ user='owner';const personalShare=await (await share.POST(request({kind:'books',ids:[first]}))).json();
+ const personalToken=new URL(personalShare.url).searchParams.get('share');
+ user='intruder';assert.equal((await preview.GET(request(null,'GET'),context({token:personalToken}))).status,200);
+ for(const id of [first,copied]){
+  assert.equal((await indexDownload.GET(new Request('https://test.example/index?share='+personalToken),context({id}))).status,404);
+  assert.equal((await pagesExport.GET(new Request('https://test.example/pages?share='+personalToken),context({id}))).status,404);
+  assert.equal((await thumbnailRoute.GET(new Request('https://test.example/thumb?share='+personalToken),context({id}))).status,404);
+  assert.equal((await coverRoute.GET(new Request('https://test.example/cover?metadata=1&share='+personalToken),context({id}))).status,404);
+ }
+ assert.equal((await (await shelvesList.GET()).json()).shelves.length,0);
+ assert.equal((await shelfRoute.PATCH(request({name:'forbidden'},'PATCH'),context({id:shelf}))).status,404);
+ assert.equal((await shelfRoute.DELETE(request({},'DELETE'),context({id:shelf}))).status,404);
+ assert.equal((await db.prepare('SELECT name FROM shelves WHERE id=?').bind(shelf).first()).name,'共有本棚');
+ user=null;
+ for(const route of [indexDownload,pagesExport,thumbnailRoute,coverRoute])assert.equal((await route.GET(new Request('https://test.example/private'),context({id:copied}))).status,401);
+ assert.equal((await shelvesList.GET()).status,401);
+ user='recipient';assert.equal((await thumbnailRoute.GET(new Request('https://test.example/thumb'),context({id:copied}))).status,200);
+ console.log('Personal index/pages/cover/thumbnail/shelves reject foreign and anonymous access, including a valid share token');
  if(process.env.PDF_ENGINE_TEST==='true'){
   const canvas=createRequire(import.meta.url)('@napi-rs/canvas');Object.assign(globalThis,{DOMMatrix:canvas.DOMMatrix,ImageData:canvas.ImageData,Path2D:canvas.Path2D});
   const engine=await import('../public/vendor/legacy/pdf.min.mjs');engine.GlobalWorkerOptions.workerSrc=new URL('../public/vendor/legacy/pdf.worker.min.mjs',import.meta.url).href;

@@ -103,5 +103,47 @@ class MigrationBundleTest(unittest.TestCase):
         self.save_meta()
         self.assertEqual(bundle.inspect(self.source)['customCovers'], {})
 
+    def test_readonly_reaudit_detects_staging_changes_without_removing_it(self):
+        bundle.seal(self.source, self.manifest)
+        for change in ('pdf', 'image', 'index', 'owner', 'lifecycle', 'extra'):
+            target = self.base / change
+            bundle.restore(self.source, self.manifest, target)
+            db_path = target / 'restored.sqlite'
+            before = db_path.read_bytes()
+            self.assertFalse(bundle.audit(self.source, self.manifest, target)['productionReady'])
+            self.assertEqual(db_path.read_bytes(), before)
+            if change == 'pdf': (target / 'pdfs' / (PDF + '.pdf')).write_bytes(b'X' * len(self.pdf))
+            elif change == 'image': (target / 'images' / (PDF + '.cover')).write_bytes(b'changed')
+            elif change == 'extra': (target / 'pdfs' / 'unexpected.pdf').write_bytes(b'extra')
+            else:
+                db = sqlite3.connect(db_path)
+                if change == 'index': db.execute("UPDATE pages SET normalized='changed'")
+                elif change == 'owner': db.execute("UPDATE books SET user_id='another-owner'")
+                else: db.execute("INSERT INTO storage_operations(user_id,token,kind,created_at) VALUES('recovery-staging','test','uncertain:put','now')")
+                db.commit();db.close()
+            with self.assertRaises(ValueError): bundle.audit(self.source, self.manifest, target)
+            self.assertTrue(db_path.exists())
+
+    def test_future_manifest_version_is_rejected(self):
+        bundle.seal(self.source, self.manifest)
+        manifest = json.loads(self.manifest.read_text());manifest['version'] = 999
+        self.manifest.write_text(json.dumps(manifest))
+        with self.assertRaises(ValueError): bundle.verify(self.source, self.manifest)
+
+    def test_capacity_report_is_aggregate_readonly(self):
+        bundle.seal(self.source, self.manifest)
+        target = self.base / 'capacity'
+        bundle.restore(self.source, self.manifest, target)
+        spec = importlib.util.spec_from_file_location('capacity', ROOT / 'scripts/staging-capacity.py')
+        capacity = importlib.util.module_from_spec(spec);spec.loader.exec_module(capacity)
+        path = target / 'restored.sqlite';before = path.read_bytes()
+        result = capacity.measure(path)
+        self.assertEqual(result['books'], 1)
+        self.assertEqual(result['indexedPages'], 1)
+        self.assertGreater(result['databaseAllocatedBytes'], result['indexTextBytes'])
+        self.assertFalse(result['cloudCostMeasured'])
+        self.assertNotIn(PDF, json.dumps(result))
+        self.assertEqual(path.read_bytes(), before)
+
 if __name__ == '__main__':
     unittest.main()
