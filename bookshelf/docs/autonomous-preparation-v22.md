@@ -82,3 +82,8 @@ net_estimate/break_evenで再計算可能。保守予算は仮定で実人件費
 完了: 復元エラー/未知項目保護、独立認証境界、世代commit/退会除外モデル、復旧不足検知、manifest改変検知、job漏えい回帰、費用再計算、運用/販売文書要件。いずれも現在の公開機能や本番全量backupを追加したものではない。
 残り: 本番全量取得/整合点/独立復元、正式認証provider/所有者証明/対応表、実R2世代制御/孤立復旧、通知到達、端末・大容量受入、運営担当/税務・契約確定。必要権限・承認を仮定して進めない。
 利用者の最小操作は前回の索引/棚/画像の別アカウント拒否のみ（readiness-followup-v22.md）。結果は項目/成功失敗/HTTP状態だけ、私有IDやPDFは提出不要。契約/切替は今回求めない。運営主体/予算/本人認証方式等は選定案と影響を具体化した段階でまとめて承認する。タブレット購入/成功済み試験の再実施は不要。
+
+## 追加: 独立ファイルの暗号化
+`node scripts/encrypted-backup.mjs encrypt SOURCE PRIVATE_32_BYTE_KEY NEW_ENCRYPTED_FILE` / `decrypt ENCRYPTED_FILE PRIVATE_32_BYTE_KEY NEW_PLAINTEXT_FILE`。AES-256-GCM、ランダム96bit IV、version付きheaderをAADとして認証、16byte tagを使用。鍵はmanifest HMACと別の32byte乱数、POSIXではowner-only権限。8MiB streamで処理し、復号tag検証完了まで新しい一時ファイルだけに書き、既存destinationを上書きしないhard-linkで確定する。空/8MiB超・誤鍵・破損・短い形式・既存先・失敗時清掃をfixture試験。公開DB/R2に接続しない。
+1ファイルはGCM上限64GiB未満（正確には2^36-32byte）まで。多数利用者のarchiveは分割し、順序・全part hashをmanifestで照合する。archive作成や展開は行わず、DB/R2取得の整合点は別途必要。hard-link非対応filesystemは失敗し既存先を維持する。Windows ACLや実利用端末では未受入。強制終了時は0600の一時平文が残り得るので暗号化ディスク上で処理し、専用領域の残存を担当者が確認する。安全な物理消去やpower-loss耐性を保証しない。独立世代保管・鍵保管/復旧・自動backup・監視通知は未稼働。
+Node公式暗号APIを参照: https://nodejs.org/api/crypto.html （2026-10-01確認）。manifest-authのHMACは暗号化ではなく、この別toolがファイル暗号化を行う。実利用者backupを今回取得/暗号化したわけではない。

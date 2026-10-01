@@ -26,6 +26,7 @@ jobs:
       - run: python3 tests/migration_test.py
       - run: python3 tests/backup_restore_test.py
       - run: python3 tests/migration_bundle_test.py
+      - run: node tests/encrypted_backup_test.mjs
       - run: python3 tests/manifest_auth_test.py
       - run: python3 tests/recovery_gate_test.py
       - run: node tests/access_boundary_test.mjs
