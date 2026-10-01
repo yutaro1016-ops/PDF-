@@ -6,12 +6,13 @@ import hashlib,json,pathlib,shutil,sqlite3,sys
 def restore(source,target):
     root=pathlib.Path(__file__).resolve().parents[1]
     source=pathlib.Path(source);target=pathlib.Path(target)
-    if target.exists(): raise ValueError('Staging destination already exists; nothing was overwritten')
+    if target.exists() or target.is_symlink(): raise ValueError('Staging destination already exists; nothing was overwritten')
     metadata=json.loads((source/'metadata.json').read_text())
     complete=json.loads((source/'COMPLETE.json').read_text())
     if metadata.get('format')!='pdf-page-finder-backup' or metadata.get('version')!=1 or complete.get('complete') is not True:
         raise ValueError('Backup is incomplete or unsupported')
-    ready=[book for book in metadata['books'] if book['status']=='ready']
+    if any(book['status']!='ready' for book in metadata['books']): raise ValueError('Unfinished PDF cannot be silently omitted')
+    ready=metadata['books']
     if complete['pdfCount']!=len(ready): raise ValueError('PDF count mismatch')
     import re
     for book in ready:
@@ -25,17 +26,19 @@ def restore(source,target):
         hashes={}
         with db:
             for shelf in metadata['shelves']:
+                if set(shelf)-{'id','name','shelf_order','color','board_color','text_color','design','created_at','updated_at'}:raise ValueError('Unsupported shelf fields; nothing silently discarded')
                 cols=[key for key in shelf if key in {'id','name','shelf_order','color','board_color','text_color','design','created_at','updated_at'}]
                 db.execute('INSERT INTO shelves('+','.join(cols)+',user_id) VALUES('+','.join('?' for _ in cols)+',?)',[shelf[key] for key in cols]+['recovery-staging'])
             allowed={row[1] for row in db.execute('PRAGMA table_info(books)')} - {'user_id','upload_id'}
             for book in ready:
+                if set(book)-allowed:raise ValueError('Unsupported book fields; nothing silently discarded')
                 cols=[key for key in book if key in allowed]
                 db.execute('INSERT INTO books('+','.join(cols)+',user_id) VALUES('+','.join('?' for _ in cols)+',?)',[book[key] for key in cols]+['recovery-staging'])
                 count=0
                 with (source/(book['id']+'.pages.ndjson')).open() as pages:
                     for line in pages:
                         page=json.loads(line)
-                        if not isinstance(page['number'],int) or not 1<=page['number']<=book['page_count'] or not isinstance(page['body'],str) or not isinstance(page['normalized'],str): raise ValueError('Invalid search page')
+                        if type(page['number']) is not int or not 1<=page['number']<=book['page_count'] or not isinstance(page['body'],str) or not isinstance(page['normalized'],str): raise ValueError('Invalid search page')
                         db.execute('INSERT INTO pages VALUES(?,?,?,?)',(book['id'],page['number'],page['body'],page['normalized']));count+=1
                 if count!=book['indexed_pages']: raise ValueError('Indexed-page count changed during backup; repeat export')
                 sha=hashlib.sha256()

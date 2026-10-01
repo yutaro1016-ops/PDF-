@@ -4,6 +4,22 @@ No network, credentials, paid resources, or billing setup.
 """
 import json, math
 
+def net_estimate(users, gb_per_user, annual=False, extra_monthly=0, maintenance_hours=0, hourly_budget=3000):
+    """Scenario: standard Payments 3.6%; Billing/Tax/refunds/tax liability excluded."""
+    base = estimate(users, gb_per_user)
+    receipts = users * (5000 / 12 if annual else 500) * (1 - 0.036)
+    costs = base['cloudflareJPY'] + extra_monthly + maintenance_hours * hourly_budget
+    return {'users': users, 'annual': annual, 'receiptsJPY': round(receipts, 2),
+            'costBudgetJPY': round(costs, 2), 'remainingJPY': round(receipts - costs, 2),
+            'actualBill': False, 'unpricedExtrasAssumedJPY': extra_monthly,
+            'singleD1NeedsCapacityReview': base['singleD1NeedsCapacityReview']}
+
+def break_even(gb_per_user, annual=False, extra_monthly=0, maintenance_hours=0):
+    for users in range(1, 1001):
+        if net_estimate(users, gb_per_user, annual, extra_monthly, maintenance_hours)['remainingJPY'] >= 0:
+            return users
+    return None
+
 def estimate(users, gb_per_user, backup_copies=2, jpy_per_usd=150):
     # Include DB dump copies in R2. Index size is an unmeasured 5% assumption.
     pdf_gb = users * gb_per_user

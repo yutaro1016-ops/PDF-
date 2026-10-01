@@ -37,6 +37,8 @@ def inspect(source):
     source = pathlib.Path(source).resolve()
     meta = json.loads(file_at(source, 'metadata.json').read_text())
     complete = json.loads(file_at(source, 'COMPLETE.json').read_text())
+    if set(meta) - {'format', 'version', 'exportedAt', 'scope', 'books', 'shelves'} or set(complete) - {'format', 'version', 'complete', 'pdfCount', 'completedAt'}:
+        raise ValueError('Unknown export envelope fields; preserve original and update format support')
     if meta.get('format') != 'pdf-page-finder-backup' or meta.get('version') != 1 or complete.get('complete') is not True:
         raise ValueError('Incomplete or unsupported export')
     books, shelves = meta['books'], meta['shelves']
@@ -117,6 +119,7 @@ def audit(source, manifest, target):
     db = sqlite3.connect(db_path.as_uri() + '?mode=ro', uri=True)
     db.row_factory = sqlite3.Row
     try:
+        db.execute('BEGIN')
         for table in ('shares', 'share_books', 'import_jobs', 'import_items', 'account_lifecycle', 'storage_operations'):
             if db.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0]:
                 raise ValueError('Unexpected lifecycle/share/job state in single-user staging')
@@ -124,7 +127,10 @@ def audit(source, manifest, target):
             if db.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0] != len(rows):
                 raise ValueError('Restored record count mismatch')
             for row in rows:
-                actual = dict(db.execute('SELECT * FROM ' + table + ' WHERE id=?', (row['id'],)).fetchone())
+                matched = db.execute('SELECT * FROM ' + table + ' WHERE id=?', (row['id'],)).fetchone()
+                if matched is None:
+                    raise ValueError('Restored record ID mismatch: ' + table)
+                actual = dict(matched)
                 if actual.get('user_id') != 'recovery-staging':
                     raise ValueError('Unexpected staging owner')
                 for key, value in row.items():
@@ -193,5 +199,5 @@ if __name__ == '__main__':
         else:
             raise ValueError(__doc__)
         print(json.dumps({key: result[key] for key in ('pdfs', 'pages', 'productionReady')}, ensure_ascii=False))
-    except (ValueError, OSError, KeyError, IndexError) as error:
+    except (ValueError, OSError, KeyError, IndexError, TypeError, sqlite3.Error) as error:
         raise SystemExit(str(error))

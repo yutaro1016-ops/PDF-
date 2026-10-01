@@ -4,6 +4,11 @@ cost = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cost)
 
 class CostTest(unittest.TestCase):
+    def test_net_receipts_and_maintenance_threshold(self):
+        self.assertEqual(cost.net_estimate(1, 1)['remainingJPY'], -268)
+        self.assertGreater(cost.net_estimate(10, 1)['remainingJPY'], 0)
+        self.assertLess(cost.net_estimate(10, 1, maintenance_hours=2)['remainingJPY'], 0)
+        self.assertGreater(cost.break_even(5, annual=True, maintenance_hours=2), cost.break_even(1))
     def test_full_capacity_requires_sharding_review(self):
         row = cost.estimate(100, 5)
         self.assertEqual(row['pdfGB'], 500)

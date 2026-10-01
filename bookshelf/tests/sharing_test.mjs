@@ -46,7 +46,7 @@ try{
  let response=await createImport.POST(request(payload),context({token}));assert.equal(response.status,201);let job=(await response.json()).job;
  const copiedShelf=await db.prepare('SELECT * FROM shelves WHERE id=?').bind(job.shelfId).first();assert.equal(copiedShelf.user_id,'recipient');assert.equal(copiedShelf.color,'#123456');assert.equal(copiedShelf.design,'wood');
  response=await createImport.POST(request(payload),context({token}));assert.equal((await response.json()).job.id,jobId);
- user='intruder';assert.equal((await advance.POST(request({}),context({id:jobId}))).status,404);user='recipient';
+ user='intruder';for(const method of ['GET','POST','DELETE']){const refused=await advance[method](request({},method),context({id:jobId}));assert.equal(refused.status,404);assert(!JSON.stringify(await refused.json()).includes(first));}assert.equal((await (await share.GET()).json()).shares.length,0);user=null;for(const method of ['GET','POST','DELETE'])assert.equal((await advance[method](request({},method),context({id:jobId}))).status,401);user='recipient';
  await advance.POST(request({}),context({id:jobId}));failPart=true;assert.equal((await advance.POST(request({}),context({id:jobId}))).status,503);
  assert.equal((await library.GET()).status,200);assert.equal((await (await library.GET()).json()).books.length,0);
  let steps=0;while(job.status==='pending'&&steps++<30){const next=await advance.POST(request({}),context({id:jobId}));assert.equal(next.status,200);job=(await next.json()).job;}

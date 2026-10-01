@@ -105,7 +105,7 @@ class MigrationBundleTest(unittest.TestCase):
 
     def test_readonly_reaudit_detects_staging_changes_without_removing_it(self):
         bundle.seal(self.source, self.manifest)
-        for change in ('pdf', 'image', 'index', 'owner', 'lifecycle', 'extra'):
+        for change in ('pdf', 'image', 'index', 'owner', 'identity', 'lifecycle', 'extra'):
             target = self.base / change
             bundle.restore(self.source, self.manifest, target)
             db_path = target / 'restored.sqlite'
@@ -119,6 +119,7 @@ class MigrationBundleTest(unittest.TestCase):
                 db = sqlite3.connect(db_path)
                 if change == 'index': db.execute("UPDATE pages SET normalized='changed'")
                 elif change == 'owner': db.execute("UPDATE books SET user_id='another-owner'")
+                elif change == 'identity': db.execute("UPDATE books SET id='another-pdf'")
                 else: db.execute("INSERT INTO storage_operations(user_id,token,kind,created_at) VALUES('recovery-staging','test','uncertain:put','now')")
                 db.commit();db.close()
             with self.assertRaises(ValueError): bundle.audit(self.source, self.manifest, target)
@@ -129,6 +130,25 @@ class MigrationBundleTest(unittest.TestCase):
         manifest = json.loads(self.manifest.read_text());manifest['version'] = 999
         self.manifest.write_text(json.dumps(manifest))
         with self.assertRaises(ValueError): bundle.verify(self.source, self.manifest)
+
+    def test_unknown_envelope_is_not_silently_ignored(self):
+        self.meta['future_owner_mapping'] = {'private': 'important'}
+        self.save_meta()
+        with self.assertRaises(ValueError): bundle.inspect(self.source)
+
+    def test_legacy_restore_rejects_unknown_and_unfinished_without_loss(self):
+        spec = importlib.util.spec_from_file_location('legacy', ROOT / 'scripts/restore-backup.py')
+        legacy = importlib.util.module_from_spec(spec);spec.loader.exec_module(legacy)
+        for change in ('book', 'shelf', 'unfinished'):
+            original = json.loads(json.dumps(self.meta))
+            if change == 'book': self.meta['books'][0]['future_field'] = 'important'
+            elif change == 'shelf': self.meta['shelves'][0]['future_field'] = 'important'
+            else: self.meta['books'][0]['status'] = 'uploading'
+            self.save_meta();target = self.base / change
+            with self.assertRaises(ValueError): legacy.restore(self.source, target)
+            self.assertFalse(target.exists());self.assertTrue(self.source.exists())
+            self.meta = original
+        self.save_meta()
 
     def test_capacity_report_is_aggregate_readonly(self):
         bundle.seal(self.source, self.manifest)
