@@ -1,5 +1,7 @@
 # 保存操作barrierと退会の運用（version21）
 
+> 2026-10-01追記: Support回答から正式な復旧権限・手順を確認できていない（不存在の確定ではない）。同じ問い合わせを再送せず、[移行準備](migration-preparation-v22.md)へ不足を記録した。本番強制解除・時間による自動解除・退会有効化はしていない。管理可能なR2 S3一覧権限を取得しても旧要求の終了保証とは別であり、世代key/fencingの追加設計と受入が必要。
+
 ## 本番では無効
 CAPACITY_ENFORCED=false、ACCOUNT_DELETION_ENABLED=falseを維持。
 追加のSTORAGE_OPERATION_GUARD_ENABLEDも既定false。本番の通常PDF保存の並行性を、運用受入前に変更しない。退会をtrueにすると、全R2変更入口のbarrierも必ず有効になる。独立試験でだけ有効化して検証した。

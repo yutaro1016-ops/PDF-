@@ -1,5 +1,7 @@
 # バックアップ・退会・移行の運用案
 
+> 2026-10-01追記: [取得範囲・段階的移行と新しいoffline照合手順](migration-preparation-v22.md)、[2案の公式資料・費用比較](managed-hosting-comparison.md)を参照。SupportでSites正式復旧手順を確認できず、回答依存の作業を外した。旧世代保持/退会/rollback案は履歴であり、現在は本番3フラグOFF、FixedLengthStreamを保持。新ツールでも原子的snapshot/全利用者移行は保証しない。
+
 ## 現在できる書き出し
 データ管理→フォルダーに保存。Chromium系の対応環境・HTTPS・利用者のフォルダー許可が必要。metadata.json、各PDF、各pages.ndjson、成功時COMPLETE.jsonを出力。途中失敗はCOMPLETEがない未完了バックアップ。書き出し中に変更すると時点整合性が保証されないため操作を止めて実施。対応外端末ではメタデータとPDF個別保存のみで、同等の完全バックアップにならない。
 画像/索引/共有含む本番全体の自動バックアップではない。端末の保存先を暗号化しアクセスを限定する。GitHubにPDFや出力データを登録しない。

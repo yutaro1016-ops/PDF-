@@ -10,6 +10,8 @@ class CostTest(unittest.TestCase):
         self.assertEqual(row['r2GBWithTwoBackups'], 1550)
         self.assertTrue(row['singleD1NeedsCapacityReview'])
         self.assertEqual(row['cloudflareJPY'], 6465)
+        self.assertEqual(row['supabaseDBEgressGBPerMonth'], 775)
+        self.assertGreater(row['supabaseR2JPY'], 15000)
 
     def test_annual_price_and_retention_sensitivity(self):
         normal = cost.estimate(10, 1)

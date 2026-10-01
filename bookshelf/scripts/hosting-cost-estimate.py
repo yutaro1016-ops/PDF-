@@ -12,9 +12,13 @@ def estimate(users, gb_per_user, backup_copies=2, jpy_per_usd=150):
     r2 = math.ceil(max(0, r2_gb - 10)) * 0.015
     # Assumed requests/CPU/rows/operations remain inside included monthly quotas.
     a = 5 + r2 + max(0, db_gb - 5) * 0.75
-    b = 5 + 25 + r2 + max(0, db_gb - 8) * 0.125
+    # Daily full logical DB dump to R2 plus one DB-sized volume of API reads.
+    # PDF transfers go directly through Workers/R2, not Supabase.
+    db_egress_gb = db_gb * 31
+    b = 5 + 25 + r2 + max(0, db_gb - 8) * 0.125 + max(0, db_egress_gb - 250) * 0.09
     return {'users': users, 'pdfGBPerUser': gb_per_user, 'pdfGB': pdf_gb,
             'dbGBAssumed': db_gb, 'r2GBWithTwoBackups': r2_gb,
+            'supabaseDBEgressGBPerMonth': db_egress_gb,
             'cloudflareUSD': round(a, 2), 'supabaseR2USD': round(b, 2),
             'cloudflareJPY': round(a * jpy_per_usd), 'supabaseR2JPY': round(b * jpy_per_usd),
             'singleD1NeedsCapacityReview': db_gb >= 10,

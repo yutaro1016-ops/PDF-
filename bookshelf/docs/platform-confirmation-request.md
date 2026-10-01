@@ -1,5 +1,7 @@
 # Sites運営元への確認事項（未送信・2026-09-30）
 
+> 2026-10-01訂正: 以下は当時の準備記録。ユーザーがSupportへ問い合わせ、公開資料では正式な全量復旧手順/保証を確認できないとの回答を受けた。機能不存在とは断定しない。同じ問い合わせの再送は今回勧めない。[移行準備](migration-preparation-v22.md)と[管理可能な環境比較](managed-hosting-comparison.md)に未確認事項と回答に依存しない作業を整理した。
+
 対象: PDF Page Finder / appgprj_6abb0a1c108c8191a976513dd82174aa
 URL: https://pdf-page-finder.yutaro1016.chatgpt.site/shelf
 本書は質問の準備であり、問い合わせは送信していない。
