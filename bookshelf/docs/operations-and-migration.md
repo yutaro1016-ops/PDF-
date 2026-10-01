@@ -1,5 +1,6 @@
 # バックアップ・退会・移行の運用案
 
+> 最新訂正: [利用者確認の訂正記録](release-verification-v22-acceptance-correction.md)。別アカウントの索引・棚・画像も利用者報告受領済み。同じ確認の依頼を撤回し、今回利用者の追加操作は不要。新環境の受入・正式全量復旧とは区別する。
 > 最新の独立整備は [自律整備記録](autonomous-preparation-v22.md) を参照。過去の「再確認」手順は履歴です。利用者報告済みの成功項目の再実施・タブレット購入は不要。本番接続・完全移行・販売開始は未完了。
 > 2026-10-01追記: [取得範囲・段階的移行と新しいoffline照合手順](migration-preparation-v22.md)、[2案の公式資料・費用比較](managed-hosting-comparison.md)を参照。SupportでSites正式復旧手順を確認できず、回答依存の作業を外した。旧世代保持/退会/rollback案は履歴であり、現在は本番3フラグOFF、FixedLengthStreamを保持。新ツールでも原子的snapshot/全利用者移行は保証しない。
 
