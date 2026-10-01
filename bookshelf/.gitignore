@@ -52,4 +52,6 @@ tsconfig.tsbuildinfo
 *.sqlite
 *.pages.ndjson
 __pycache__/
+*.migration-manifest.json
+/migration-private/
 !.env.example

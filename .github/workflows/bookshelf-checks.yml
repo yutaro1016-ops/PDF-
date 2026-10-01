@@ -25,6 +25,8 @@ jobs:
       - run: python3 scripts/prepare-pdf-vendor.py
       - run: python3 tests/migration_test.py
       - run: python3 tests/backup_restore_test.py
+      - run: python3 tests/migration_bundle_test.py
+      - run: python3 tests/hosting_cost_test.py
       - run: node --check public/app.js
       - run: node tests/color_presets_test.mjs
       - run: node tests/thumbnail_test.mjs

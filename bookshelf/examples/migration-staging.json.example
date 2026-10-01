@@ -1,0 +1,25 @@
+{
+  "purpose": "existing-pdf-page-finder-offline-migration-verification",
+  "productionEnabled": false,
+  "sourceScope": "single-user-export",
+  "stagingOwner": "recovery-staging",
+  "identityMapping": {
+    "sourceUserId": null,
+    "targetIssuer": null,
+    "targetSubject": null,
+    "ownershipProofVerified": false,
+    "accessEnabled": false
+  },
+  "CAPACITY_ENFORCED": false,
+  "ACCOUNT_DELETION_ENABLED": false,
+  "STORAGE_OPERATION_GUARD_ENABLED": false,
+  "backupPlanOnly": {
+    "targetRPOHours": 24,
+    "targetRTOHours": 4,
+    "completedGenerationsForCostEstimate": 2,
+    "proposedMaximumPersonalDataRetentionDays": 30,
+    "encryptionRequired": true,
+    "separateKeyAndTombstoneLedgerRequired": true,
+    "automaticUnlockAllowed": false
+  }
+}
