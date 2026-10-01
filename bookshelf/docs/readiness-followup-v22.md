@@ -1,11 +1,12 @@
 # version22 利用者受入・再照合・所有Cloudflare準備（2026-10-01 JST）
 
+> 2026-10-01 11:42 JST 訂正: 利用者から別アカウントの索引・棚・画像も「問題なし」との報告を受領済みとして扱う。追加の同じ確認依頼は撤回。利用者報告と開発者の独立試験を区別し、HTTP状態・詳細端末版等の未提出を理由に再確認を求めない。以下に残る過去の提出手順は履歴であり、今回の必要作業ではない。
 ## 利用者報告の保存
 以下はチャットの利用者報告。開発者による実ブラウザー確認と区別する。HTTP状態/試験PDF/OS/Chrome詳細版/表示倍率の証跡は未提出。全資料・全端末を保証しない。
 |環境|報告された結果|区分|
 |---|---|---|
 |Dell PC / Chrome|左欄検索結果の最終行までスクロール、PDF第1page/指定画像の表紙が再読込後も表示、folder保存の中断/再開/完了が可能|利用者確認済み|
-|許可された別アカウント|共有PDFの取り込み/閲覧/本文検索が可能、取消後の元リンク/新規取り込み拒否、非共有PDF直接URLから表示されない|利用者確認済み。索引/棚/画像の直接拒否は別途未確認|
+|許可された別アカウント|共有PDFの取り込み/閲覧/本文検索が可能、取消後の元リンク/新規取り込み拒否、非共有PDF直接URLから表示されない|利用者確認済み（索引/棚/画像の直接拒否も最新の利用者報告を受領。開発者による実アカウント操作とは別）|
 |Nothing Phone (2a) / Chrome|PDF閲覧/本文検索/表紙/メニュー/複数選択/移動に問題なし|利用者確認済み|
 |タブレット|端末未保有|実機未実施。購入や同じ成功試験を繰返し求めない|
 
@@ -14,7 +15,7 @@
 ## 個人APIの監査と回帰
 currentUserはtrusted Sites user IDとaccount_lifecycleを照合。ownedBookはid AND user_id条件。export-indexは開始時とpullごとに所有確認、export-pagesも所有確認。coverはDBの所有bookからinline画像を返し、thumbnailは所有確認後に本人prefixを取得。shelves GETは本人predicate、PATCH/DELETEも本人predicateと同一origin条件。share preview/importのみ専用の共有権利を扱い、個人APIにtokenによる権利拡張はない。
 監査対象に再現する漏えい不備は見つからず、runtimeルートの修正はしていない。tests/sharing_test.mjsへ、匿名401・別owner404・有効share tokenを持っていても個人索引/画像を取得不可・別owner棚変更/削除拒否・棚名不変・本人thumbnail取得成功を追加した。SQLite+模擬R2+合成userの試験であり、実ChatGPTアカウントの代理ログインではない。
-最小の残る実機手順: Aの自作PDFを開いた時の /api/library/ID/export-index、/export-pages、/cover?metadata=1、/thumbnail の各URLをBの別profileで開き、データ非表示か確認する。Aの画像と索引が実在するfixtureで、Aは取得可能・Bは拒否を組み合わせる。棚はBの棚一覧にAの棚がないことを確認する。エラー番号と成否のみを報告し、ID/token/実資料をGitHubへ貼らない。棚の破壊試験は今回本番で要求しない。
+撤回した過去の実機確認手順（今回は実施不要）: Aの自作PDFを開いた時の /api/library/ID/export-index、/export-pages、/cover?metadata=1、/thumbnail の各URLをBの別profileで開き、データ非表示か確認する。Aの画像と索引が実在するfixtureで、Aは取得可能・Bは拒否を組み合わせる。棚はBの棚一覧にAの棚がないことを確認する。エラー番号と成否のみを報告し、ID/token/実資料をGitHubへ貼らない。棚の破壊試験は今回本番で要求しない。
 
 ## 復元後の再照合
 `python3 scripts/migration-bundle.py audit /private/export /private/manifest.json /private/existing-stage`

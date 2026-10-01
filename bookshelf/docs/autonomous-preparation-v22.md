@@ -1,5 +1,6 @@
 # version22 自律整備・運用準備（2026-10-01）
 
+> 2026-10-01 11:42 JST 訂正: 利用者から別アカウントの索引・棚・画像も「問題なし」との報告を受領済みとして扱う。追加の同じ確認依頼は撤回。利用者報告と開発者の独立試験を区別し、HTTP状態・詳細端末版等の未提出を理由に再確認を求めない。以下に残る過去の提出手順は履歴であり、今回の必要作業ではない。
 ## 範囲
 既存アプリの独立移行検証用。公開version22/source 9e7e66478dd21b644944e4867909810da9356fb9を維持。新アプリ・契約・支出・本番切替・通知送信なし。利用者報告はreadiness-followup-v22.mdを継承。タブレット端末未保有のため実機未実施。正式control-browser環境は未提供で模擬画面試験も未実施。成功済みの利用者試験は再要求しない。
 
@@ -12,7 +13,7 @@
 |migration/generation-model.py|SQLite限定の世代token条件付きcommit。古いtoken/blocked ownerは可視化不可。最新退会台帳の復元除外を冪等適用|実R2 immutable世代object、索引/画像を含む原子的公開commit、全API統合、orphan GC、実worker/下流終了確認。実R2の処理停止・物理消去を保証しない|
 |scripts/recovery-gate.py|trusted evidence JSONの厳格なversion/field/type検証、24h経過・未来時刻・hash照合不足・最新台帳不足・対応表不足・結果不明・孤立multipartをblockersとして出力。失敗exit2/入力不正exit1|証跡収集元/署名・全量整合点・自動実行・通知先。すべて合格でもproductionReady=false。時間経過で結果不明を解除しない|
 |scripts/manifest-auth.py|独立秘密鍵によるdetached HMAC-SHA256。POSIX鍵権限を検査、タグ既存先を拒否、8MiB逐次処理。署名前の改変は判定不可|暗号化ではない。鍵管理/rotation/復旧/署名前原本の真正性、他系統の独立保管・自動取得は未実装|
-|sharing_test|取り込みjob GET/POST/DELETEを他人404・匿名401、他人共有一覧空、拒否応答に元PDF IDなしを追加|実アカウントの直接索引/棚/画像拒否、本番の認証輸送の受入|
+|sharing_test|取り込みjob GET/POST/DELETEを他人404・匿名401、他人共有一覧空、拒否応答に元PDF IDなしを追加|利用者報告は受領済み。開発者の実アカウント操作/新環境の認証輸送は別区分|
 
 実装を現在のSites currentUserへ接続していない。既存のヘッダー認証を外部環境で流用せず、上記境界のserver verifierを正式provider検証へ置換してから使う。objectKeyのcontextも信頼するserver内部だけが作る。入力されたownerIdを直接渡すことは認可ではない。現在のlegacy user ID形式は実取得前に確認し、範囲外IDを勝手に再生成しない。
 
@@ -81,7 +82,7 @@ net_estimate/break_evenで再計算可能。保守予算は仮定で実人件費
 ## 利用者操作なしで完了/残り
 完了: 復元エラー/未知項目保護、独立認証境界、世代commit/退会除外モデル、復旧不足検知、manifest改変検知、job漏えい回帰、費用再計算、運用/販売文書要件。いずれも現在の公開機能や本番全量backupを追加したものではない。
 残り: 本番全量取得/整合点/独立復元、正式認証provider/所有者証明/対応表、実R2世代制御/孤立復旧、通知到達、端末・大容量受入、運営担当/税務・契約確定。必要権限・承認を仮定して進めない。
-利用者の最小操作は前回の索引/棚/画像の別アカウント拒否のみ（readiness-followup-v22.md）。結果は項目/成功失敗/HTTP状態だけ、私有IDやPDFは提出不要。契約/切替は今回求めない。運営主体/予算/本人認証方式等は選定案と影響を具体化した段階でまとめて承認する。タブレット購入/成功済み試験の再実施は不要。
+今回、利用者による再確認・追加提出は不要。索引/棚/画像も利用者報告を受領済み。契約/切替は今回求めない。運営主体/予算/本人認証方式等は選定案と影響を具体化した段階でまとめて承認する。タブレット購入/成功済み試験の再実施は不要。
 
 ## 追加: 独立ファイルの暗号化
 `node scripts/encrypted-backup.mjs encrypt SOURCE PRIVATE_32_BYTE_KEY NEW_ENCRYPTED_FILE` / `decrypt ENCRYPTED_FILE PRIVATE_32_BYTE_KEY NEW_PLAINTEXT_FILE`。AES-256-GCM、ランダム96bit IV、version付きheaderをAADとして認証、16byte tagを使用。鍵はmanifest HMACと別の32byte乱数、POSIXではowner-only権限。8MiB streamで処理し、復号tag検証完了まで新しい一時ファイルだけに書き、既存destinationを上書きしないhard-linkで確定する。空/8MiB超・誤鍵・破損・短い形式・既存先・失敗時清掃をfixture試験。公開DB/R2に接続しない。

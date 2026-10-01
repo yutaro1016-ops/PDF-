@@ -1,4 +1,4 @@
-import base64, importlib.util, json, pathlib, sqlite3, subprocess, tempfile, unittest
+import base64, importlib.util, json, os, pathlib, sqlite3, subprocess, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('bundle', ROOT / 'scripts/migration-bundle.py')
@@ -135,6 +135,22 @@ class MigrationBundleTest(unittest.TestCase):
         self.meta['future_owner_mapping'] = {'private': 'important'}
         self.save_meta()
         with self.assertRaises(ValueError): bundle.inspect(self.source)
+
+    def test_encrypted_export_roundtrip_restores_ids_index_settings_and_cover(self):
+        bundle.seal(self.source, self.manifest)
+        key = self.base / 'private-key';key.write_bytes(os.urandom(32));key.chmod(0o600)
+        decrypted = self.base / 'decrypted';decrypted.mkdir()
+        pairs = [(item, decrypted / item.name) for item in self.source.iterdir()]
+        pairs.append((self.manifest, self.base / 'verified-manifest.json'))
+        for position, (source, destination) in enumerate(pairs):
+            encrypted = self.base / ('part-' + str(position) + '.enc')
+            subprocess.check_call(['node', str(ROOT / 'scripts/encrypted-backup.mjs'), 'encrypt', str(source), str(key), str(encrypted)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(['node', str(ROOT / 'scripts/encrypted-backup.mjs'), 'decrypt', str(encrypted), str(key), str(destination)], stdout=subprocess.DEVNULL)
+            self.assertEqual(bundle.digest(source), bundle.digest(destination))
+        report = bundle.restore(decrypted, self.base / 'verified-manifest.json', self.base / 'encrypted-roundtrip-stage')
+        self.assertEqual(report['pdfs'], 1);self.assertEqual(report['pages'], 1)
+        self.assertFalse(report['productionReady'])
+        self.assertFalse(bundle.audit(decrypted, self.base / 'verified-manifest.json', self.base / 'encrypted-roundtrip-stage')['productionReady'])
 
     def test_legacy_restore_rejects_unknown_and_unfinished_without_loss(self):
         spec = importlib.util.spec_from_file_location('legacy', ROOT / 'scripts/restore-backup.py')
