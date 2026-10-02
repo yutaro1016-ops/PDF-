@@ -1,0 +1,60 @@
+// Actual route handlers and PDF.js with SQLite and disk-backed storage adapters.
+// This is not a real browser, a production R2 test, or a network throughput test.
+import assert from 'node:assert/strict';
+import {createReadStream,readFileSync} from 'node:fs';
+import {mkdtemp,open,stat,rm,mkdir} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {createHash,randomUUID,webcrypto} from 'node:crypto';
+import {Readable} from 'node:stream';
+import {spawn} from 'node:child_process';
+import readline from 'node:readline';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+import {writePDF} from './pdf_fixture.mjs';
+const require=createRequire(import.meta.url),ts=require('typescript'),canvas=require('@napi-rs/canvas');
+Object.assign(globalThis,{DOMMatrix:canvas.DOMMatrix,ImageData:canvas.ImageData,Path2D:canvas.Path2D});
+const root=path.resolve(import.meta.dirname,'..'),directory=await mkdtemp(path.join(tmpdir(),'pdf-large-'));
+const worker=spawn('python3',[path.join(root,'tests/sqlite_bridge.py')],{stdio:['pipe','pipe','inherit']});
+let serial=0,failFinalize=false;const pending=new Map();
+readline.createInterface({input:worker.stdout}).on('line',line=>{const value=JSON.parse(line),entry=pending.get(value.id);pending.delete(value.id);value.error?entry.reject(Error(value.error)):entry.resolve(value.results);});
+function query(statements){return new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});worker.stdin.write(JSON.stringify({id,statements})+'\n');});}
+class Statement{constructor(sql,args=[]){Object.assign(this,{sql,args});}bind(...args){assert(args.length<=100);return new Statement(this.sql,args);}async run(){if(failFinalize&&this.sql.includes("upload_id = NULL, status = 'ready'")){failFinalize=false;throw Error('Injected DB finalization failure');}return (await query([this]))[0];}all(){return this.run();}async first(){return (await this.run()).results[0]??null;}}
+const db={prepare:sql=>new Statement(sql),batch:query},uploads=new Map(),objects=new Map();
+let completeCalls=0,largestPart=0;
+const hashFile=async file=>{const hash=createHash('sha256');for await(const chunk of createReadStream(file))hash.update(chunk);return hash.digest('hex');};
+function upload(key,id){return {uploadId:id,async uploadPart(number,stream){const job=uploads.get(id);assert(job);const file=path.join(job.directory,String(number));const handle=await open(file,'w');let size=0;try{for await(const chunk of stream){let offset=0;while(offset<chunk.length){const result=await handle.write(chunk,offset,chunk.length-offset);assert(result.bytesWritten>0);offset+=result.bytesWritten;}size+=chunk.length;}}finally{await handle.close();}assert(size<=8*1024*1024);largestPart=Math.max(largestPart,size);job.parts.set(number,file);return {partNumber:number,etag:await hashFile(file)};},async complete(parts){completeCalls++;const job=uploads.get(id),file=path.join(directory,randomUUID()+'.pdf'),handle=await open(file,'wx');try{for(const part of parts){const source=job.parts.get(part.partNumber);assert.equal(await hashFile(source),part.etag);for await(const chunk of createReadStream(source)){let offset=0;while(offset<chunk.length){const result=await handle.write(chunk,offset,chunk.length-offset);assert(result.bytesWritten>0);offset+=result.bytesWritten;}}}}finally{await handle.close();}objects.set(key,file);uploads.delete(id);await rm(job.directory,{recursive:true});return {size:(await stat(file)).size};},async abort(){const job=uploads.get(id);if(job)await rm(job.directory,{recursive:true});uploads.delete(id);}};}
+const bucket={async createMultipartUpload(key){const id=randomUUID(),location=path.join(directory,id);await mkdir(location);uploads.set(id,{directory:location,parts:new Map()});return upload(key,id);},resumeMultipartUpload:upload,async head(key){const file=objects.get(key);return file?{size:(await stat(file)).size}:null;},async get(key,options){const file=objects.get(key);if(!file)return null;const size=(await stat(file)).size,range=options?.range;return {size,body:Readable.toWeb(createReadStream(file,range?{start:range.offset,end:range.offset+range.length-1}:{}))};},async delete(key){for(const item of Array.isArray(key)?key:[key]){const file=objects.get(item);if(file)await rm(file);objects.delete(item);}}};
+const shared={database:()=>db,bucket:()=>bucket,currentUser:async()=> 'large-test',fileKey:(user,id)=>`${user}/${id}.pdf`,PART_BYTES:8*1024*1024,MAX_PDF_BYTES:1024**3,sameOrigin:request=>request.headers.get('origin')===new URL(request.url).origin,failure:(error,status=400)=>Response.json({error},{status}),serverError:()=>Response.json({error:'Injected storage failure'},{status:503}),ownedBook:(id,user)=>db.prepare('SELECT * FROM books WHERE id=? AND user_id=?').bind(id,user).first()};
+const modules=new Map();function load(file){file=path.resolve(file);if(modules.has(file))return modules.get(file);const exports={};modules.set(file,exports);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports,require:specifier=>{if(specifier==='cloudflare:workers')return {env:{CAPACITY_ENFORCED:'false',ACCOUNT_DELETION_ENABLED:'false'}};const target=path.resolve(path.dirname(file),specifier)+'.ts';return target===path.join(root,'app/api/library/shared.ts')?shared:load(target);},crypto:{subtle:webcrypto.subtle,randomUUID},Response,Request,Headers,ReadableStream,URL,TextEncoder,TextDecoder,Uint8Array,console,atob},{filename:file});return exports;}
+const helpers=readFileSync(path.join(root,'app/api/library/shared.ts'),'utf8');const helperExports={};vm.runInNewContext(ts.transpileModule(helpers.slice(helpers.indexOf('export async function readLimitedBody'),helpers.indexOf('export function serverError')),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:helperExports,ReadableStream,Uint8Array,RangeError});Object.assign(shared,helperExports);
+const route=name=>load(path.join(root,'app/api',name,'route.ts'));
+const library=route('library'),multipart=route('library/[id]/multipart'),partRoute=route('library/[id]/multipart/[part]'),fileRoute=route('library/[id]/file'),pages=route('library/[id]/pages'),search=route('search');
+const context=id=>({params:Promise.resolve({id})}),request=(body,method='POST')=>new Request('https://test.example/api',{method,headers:{origin:'https://test.example','content-type':'application/json'},body:JSON.stringify(body)});
+const engine=await import('../public/vendor/legacy/pdf.min.mjs');engine.GlobalWorkerOptions.workerSrc=new URL('../public/vendor/legacy/pdf.worker.min.mjs',import.meta.url).href;
+const sizes=(process.env.LARGE_PDF_MIB??'32,128,512,1024').split(',').map(Number);assert(sizes.every(n=>Number.isInteger(n)&&n>=9&&n<=1024));
+try{
+ for(const mib of sizes){
+  const fixture=path.join(directory,`fixture-${mib}.pdf`),size=await writePDF(fixture,mib*1024*1024-4096);assert(size<=shared.MAX_PDF_BYTES);
+  const registered=await library.POST(request({title:'Self-authored large PDF',fileName:'fixture.pdf',size}));assert.equal(registered.status,201);const {id}=await registered.json();
+  const initial=await multipart.POST(request({}),context(id));assert.equal(initial.status,200);const {uploadId}=await initial.json();assert.equal((await (await multipart.POST(request({}),context(id))).json()).uploadId,uploadId);
+  const parts=[];for(let offset=0;offset<size;offset+=shared.PART_BYTES){const number=parts.length+1,length=Math.min(shared.PART_BYTES,size-offset);const send=()=>partRoute.PUT(new Request('https://test.example/api',{method:'PUT',headers:{origin:'https://test.example','content-length':String(length)},body:Readable.toWeb(createReadStream(fixture,{start:offset,end:offset+length-1})),duplex:'half'}),{params:Promise.resolve({id,part:String(number)})});
+   if(number===2){let pulls=0;const broken=new ReadableStream({pull(controller){if(pulls++===0)controller.enqueue(new Uint8Array(65536));else controller.error(Error('Injected mid-part disconnect'));}});const interrupted=await partRoute.PUT(new Request('https://test.example/api',{method:'PUT',headers:{origin:'https://test.example','content-length':String(length)},body:broken,duplex:'half'}),{params:Promise.resolve({id,part:String(number)})});assert.equal(interrupted.status,503);assert.equal((await db.prepare('SELECT status FROM books WHERE id=?').bind(id).first()).status,'uploading');assert.equal(await bucket.head(shared.fileKey('large-test',id)),null);}
+   const response=await send();assert.equal(response.status,200);const result=await response.json();if(number===2){const retried=await send();assert.equal(retried.status,200);assert.deepEqual(await retried.json(),result);}parts.push(result);}
+  // Storage commit succeeded, DB acknowledgement failed; retry must not recommit.
+  const before=completeCalls;failFinalize=true;assert.equal((await multipart.POST(request({parts}),context(id))).status,503);assert.equal((await multipart.POST(request({parts}),context(id))).status,200);assert.equal(completeCalls,before+1);
+  assert.equal(await hashFile(objects.get(shared.fileKey('large-test',id))),await hashFile(fixture));
+  let rangeBytes=0,rangeCalls=0;
+  async function readRange(begin,end){const response=await fileRoute.GET(new Request('https://test.example/api',{headers:{range:`bytes=${begin}-${end-1}`}}),context(id));assert.equal(response.status,206);const bytes=new Uint8Array(await response.arrayBuffer());assert.equal(bytes.length,end-begin);rangeBytes+=bytes.length;rangeCalls++;return bytes;}
+  class Transport extends engine.PDFDataRangeTransport{constructor(initial){super(size,initial,false);this.failure=null;}requestDataRange(begin,end){readRange(begin,end).then(data=>this.onDataRange(begin,data)).catch(error=>{this.failure=error;});}}
+  const transport=new Transport(await readRange(0,65536));const task=engine.getDocument({range:transport,disableStream:true,disableAutoFetch:true,rangeChunkSize:65536,isEvalSupported:false,standardFontDataUrl:new URL('../public/vendor/standard_fonts/',import.meta.url).pathname});
+  const timer=setTimeout(()=>task.destroy(),60000);try{const document=await task.promise;assert.equal(document.numPages,3);const index=[];for(let n=1;n<=3;n++){const page=await document.getPage(n),text=(await page.getTextContent()).items.map(item=>item.str??'').join(' ');assert(text.includes('MEDICAL-STUDENT-TEST'));index.push({number:n,text,normalized:text.normalize('NFKC').toLowerCase().replace(/\s+/g,'')});}
+   const page=await document.getPage(1),viewport=page.getViewport({scale:.2}),target=canvas.createCanvas(viewport.width,viewport.height);await page.render({canvasContext:target.getContext('2d'),viewport}).promise;assert(target.getContext('2d').getImageData(0,0,target.width,target.height).data.some((value,i)=>i%4!==3&&value<230));assert(target.toBuffer('image/jpeg').length>500);
+   assert.equal((await pages.PATCH(request({pageCount:3},'PATCH'),context(id))).status,200);assert.equal((await pages.POST(request({pages:index}),context(id))).status,200);
+   for(const selected of [undefined,[id],[id,randomUUID()]]){const response=await search.POST(request({q:'MEDICAL-STUDENT-TEST',...(selected?{books:selected}:{})}));assert.equal(response.status,200);assert.equal((await response.json()).results.filter(hit=>hit.bookId===id).length,3);}
+   assert.equal(transport.failure,null);assert(rangeBytes<1024*1024,'First-page rendering and extraction must not load the padding');
+   console.log(JSON.stringify({test:'large_pdf_local_adapters',bytes:size,mib,sha256:await hashFile(fixture),parts:parts.length,largestPart,rangeBytes,rangeCalls,pages:3,result:'passed'}));
+  }finally{clearTimeout(timer);await task.destroy();}
+  await rm(fixture);await bucket.delete(shared.fileKey('large-test',id));await db.batch([db.prepare('DELETE FROM pages WHERE book_id=?').bind(id),db.prepare('DELETE FROM books WHERE id=?').bind(id)]);
+ }
+}finally{worker.stdin.end();await rm(directory,{recursive:true,force:true});}

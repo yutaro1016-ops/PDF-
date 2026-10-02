@@ -14,8 +14,11 @@ export function bucket() {
   return env.BUCKET;
 }
 
+export async function authenticatedUser(){return (await getChatGPTUser())?.userId ?? null;}
 export async function currentUser() {
-  return (await getChatGPTUser())?.userId ?? null;
+  const id=await authenticatedUser();if(!id)return null;
+  const state=await database().prepare("SELECT status FROM account_lifecycle WHERE user_id=?").bind(id).first<{status:string}>();
+  return state && state.status!=='active'?null:id;
 }
 
 export function failure(message: string, status = 400) {
@@ -36,7 +39,25 @@ export function fileKey(userId: string, id: string) {
   return `${userId}/${id}.pdf`;
 }
 
+export async function readLimitedBody(request:Request,limit:number){
+ const reader=request.body?.getReader();if(!reader)return null;
+ const chunks:Uint8Array[]=[];let size=0;
+ try{while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>limit){await reader.cancel();return null;}chunks.push(part.value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}finally{reader.releaseLock();}
+}
+// Validate actual streamed bytes, not only the caller's Content-Length.
+// At most one source chunk is held; an incomplete part remains retryable.
+export function expectedLengthBody(body:ReadableStream<Uint8Array>,expected:number){
+ // R2 requires a known-length stream. A plain JS wrapper loses that property.
+ if(typeof FixedLengthStream!=='undefined')return body.pipeThrough(new FixedLengthStream(expected));
+ const reader=body.getReader();let received=0,released=false;
+ const release=()=>{if(!released){released=true;reader.releaseLock();}};
+ return new ReadableStream<Uint8Array>({
+  async pull(controller){try{const part=await reader.read();if(part.done){if(received!==expected)throw new RangeError('PDF body length mismatch');release();controller.close();return;}received+=part.value.byteLength;if(received>expected)throw new RangeError('PDF body length exceeded');controller.enqueue(part.value);}catch(error){try{await reader.cancel(error);}finally{release();controller.error(error);}}},
+  async cancel(reason){try{await reader.cancel(reason);}finally{release();}}
+ });
+}
 export function serverError(error: unknown) {
-  console.error("Library request failed:", error);
-  return failure("保存先で問題が発生しました。少し待って再度お試しください。", 503);
+ const requestId=crypto.randomUUID();
+ console.error(JSON.stringify({event:'storage_request_failed',requestId,time:new Date().toISOString(),type:error instanceof Error?error.name:'unknown'}));
+ return Response.json({error:'保存先で問題が発生しました。少し待って再度お試しください。',requestId},{status:503,headers:{'Cache-Control':'private, no-store','X-Request-ID':requestId}});
 }

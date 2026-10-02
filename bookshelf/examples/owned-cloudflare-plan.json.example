@@ -1,0 +1,25 @@
+{
+  "purpose": "existing-app-migration-design-only",
+  "deployAllowed": false,
+  "resourcesCreated": false,
+  "mode": "offline",
+  "bindings": {"database": "DB", "objects": "BUCKET"},
+  "authentication": {
+    "adapterImplemented": false,
+    "trustedSitesHeadersAllowedOutsideSites": false,
+    "issuer": null,
+    "audience": null,
+    "principalMappingAccessEnabled": false,
+    "requireVerifiedOwnershipProof": true
+  },
+  "storage": {
+    "legacyPdfKey": "{originalUserId}/{pdfId}.pdf",
+    "legacyThumbnailKey": "{originalUserId}/{pdfId}.thumbnail.jpg",
+    "immutableGenerationKeysImplemented": false,
+    "automaticBarrierUnlockAllowed": false,
+    "independentBackupTargetConfigured": false
+  },
+  "CAPACITY_ENFORCED": false,
+  "ACCOUNT_DELETION_ENABLED": false,
+  "STORAGE_OPERATION_GUARD_ENABLED": false
+}

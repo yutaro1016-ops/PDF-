@@ -1,0 +1,5 @@
+import {currentUser,database,failure,serverError} from '../../library/shared';
+export const runtime='edge';
+export async function GET(){const user=await currentUser();if(!user)return failure('ログインが必要です。',401);
+ try{const db=database();const {results:shelves}=await db.prepare('SELECT id,name,shelf_order,color,board_color,text_color,design,created_at,updated_at FROM shelves WHERE user_id=? ORDER BY shelf_order,id').bind(user).all();const {results:books}=await db.prepare('SELECT id,title,file_name,file_size,page_count,indexed_pages,status,created_at,shelf_id,book_color,text_color,book_design,book_icon,cover_image,book_order,tags,updated_at,last_opened_at FROM books WHERE user_id=? ORDER BY created_at,id').bind(user).all();return Response.json({format:'pdf-page-finder-backup',version:1,exportedAt:new Date().toISOString(),scope:'metadata',shelves,books},{headers:{'Cache-Control':'private, no-store','Content-Disposition':'attachment; filename="pdf-bookshelf-metadata.json"','X-Content-Type-Options':'nosniff'}});}catch(error){return serverError(error);}
+}

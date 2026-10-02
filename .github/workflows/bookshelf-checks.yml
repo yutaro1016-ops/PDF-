@@ -1,0 +1,59 @@
+name: Bookshelf checks
+on:
+  push:
+    branches: [feature/digital-bookshelves]
+  pull_request:
+    paths: ['bookshelf/**', '.github/workflows/bookshelf-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: bookshelf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: bookshelf/package-lock.json
+      - run: npm run install:ci
+      - run: python3 scripts/prepare-pdf-vendor.py
+      - run: python3 tests/migration_test.py
+      - run: python3 tests/backup_restore_test.py
+      - run: python3 tests/migration_bundle_test.py
+      - run: node tests/encrypted_backup_test.mjs
+      - run: python3 tests/manifest_auth_test.py
+      - run: python3 tests/recovery_gate_test.py
+      - run: node tests/access_boundary_test.mjs
+      - run: python3 tests/hosting_cost_test.py
+      - run: node --check public/app.js
+      - run: node tests/color_presets_test.mjs
+      - run: node tests/thumbnail_test.mjs
+      - run: node tests/folder_backup_test.mjs
+      - run: node tests/upload_stream_test.mjs
+      - run: node tests/r2_stream_runtime_test.mjs
+      - run: node tests/storage_crash_test.mjs
+      - run: node tests/owned_store_test.mjs
+      - run: npm install --prefix /tmp/pdf-engine-tools --ignore-scripts @napi-rs/canvas@0.1.81
+      - run: node tests/pdf_engine_test.mjs
+        env:
+          NODE_PATH: /tmp/pdf-engine-tools/node_modules
+      - run: node tests/content_pdf_test.mjs
+        env:
+          NODE_PATH: /tmp/pdf-engine-tools/node_modules
+      - run: node tests/large_pdf_test.mjs
+        env:
+          NODE_PATH: /tmp/pdf-engine-tools/node_modules
+          LARGE_PDF_MIB: '32,128,512,1024'
+      - run: node tests/sharing_test.mjs
+        env:
+          NODE_PATH: /tmp/pdf-engine-tools/node_modules
+          PDF_ENGINE_TEST: 'true'
+      - run: node node_modules/typescript/bin/tsc --noEmit
+      - run: npm run build
+      - run: python3 scripts/health-check.py

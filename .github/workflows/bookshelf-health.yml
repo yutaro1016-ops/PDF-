@@ -1,0 +1,13 @@
+name: Bookshelf health (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 bookshelf/scripts/health-check.py
+# Add a reviewed cron only after default-branch integration and Actions budget/notification checks.
