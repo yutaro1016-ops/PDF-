@@ -1,0 +1,16 @@
+{
+  "observed_at": "2026-10-02T13:11:48.779804+00:00",
+  "base_head": "b3414c29b2839bb5d365c70eceee8e102dfa6392",
+  "source_sha256": "e883d4e59d75766707b5e7a32a638bd401476a8cbef463d0cadeec82d9a2f6fd",
+  "test_sha256": "78665819aa4db277ce347e5d9fa1a3cef1e1e13328340bc3785b3f60f0c8fad5",
+  "actual_source_modified": true,
+  "cases_passed": 27,
+  "runtime": "Node24.19.0",
+  "network_calls": 0,
+  "hosted_checks_executed": false,
+  "full_build_verified": false,
+  "R2_live_verified": false,
+  "production_deployed": false,
+  "independent_reviewer": "final_pdf_security",
+  "scope": "internal Draft only"
+}
