@@ -16,12 +16,34 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const headers = new Headers({ "Content-Type": "application/pdf", "Accept-Ranges": "bytes",
       "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
     if(new URL(request.url).searchParams.get('download')==='1')headers.set('Content-Disposition',`attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(String(book.file_name))}`);
+    // A HEAD response describes the full representation without fetching its
+    // body. Range is only meaningful for GET, including when it is malformed.
+    if (request.method === "HEAD") {
+      headers.set("Content-Length", String(metadata.size));
+      return new Response(null, { headers });
+    }
     const range = request.headers.get("range");
-    if (range) {
-      const match = /^bytes=(\d+)-(\d*)$/.exec(range);
-      const start = match ? Number(match[1]) : NaN;
-      const end = match ? (match[2] ? Number(match[2]) : metadata.size - 1) : NaN;
-      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || end >= metadata.size) {
+    // No response validator is exposed by this route. If-Range cannot be
+    // proven to match, so return a fresh full body rather than mix revisions.
+    if (range && !request.headers.has("if-range") && range.trim().startsWith("bytes=")) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+      let start = NaN, end = NaN;
+      if (match && (match[1] || match[2])) {
+        if (match[1]) {
+          start = Number(match[1]);
+          const requestedEnd = match[2] ? Number(match[2]) : metadata.size - 1;
+          if (Number.isSafeInteger(requestedEnd)) end = Math.min(requestedEnd, metadata.size - 1);
+        } else {
+          const suffixLength = Number(match[2]);
+          if (Number.isSafeInteger(suffixLength) && suffixLength > 0) {
+            start = Math.max(0, metadata.size - suffixLength);
+            end = metadata.size - 1;
+          }
+        }
+      }
+      // Only a single safe integer range is supported. Never fetch storage for
+      // malformed, multiple, zero-length suffix or unsatisfiable ranges.
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= metadata.size) {
         headers.set("Content-Range", `bytes */${metadata.size}`);
         return new Response(null, { status: 416, headers });
       }
@@ -32,7 +54,6 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       return new Response(object.body, { status: 206, headers });
     }
     headers.set("Content-Length", String(metadata.size));
-    if (request.method === "HEAD") return new Response(null, { headers });
     const object = await bucket().get(key);
     if (!object) return failure("PDFが見つかりません。", 404);
     return new Response(object.body, { headers });
