@@ -23,6 +23,7 @@ jobs:
           cache-dependency-path: bookshelf/package-lock.json
       - run: npm run install:ci
       - run: python3 scripts/prepare-pdf-vendor.py
+      - run: python3 tests/health_check_test.py
       - run: python3 tests/migration_test.py
       - run: python3 tests/backup_restore_test.py
       - run: python3 tests/migration_bundle_test.py
